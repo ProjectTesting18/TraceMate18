@@ -1,0 +1,15 @@
+{
+  "name": "tracemate-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TraceMate lost and found application with backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "reset:data": "node reset-data.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "mongodb": "^6.7.0"
+  }
+}

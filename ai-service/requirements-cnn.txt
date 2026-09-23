@@ -1,0 +1,5 @@
+# Optional CNN acceleration/model support.
+# Install this only if your Python version and platform have compatible
+# PyTorch/torchvision wheels.
+torch>=2.5.0
+torchvision>=0.20.0

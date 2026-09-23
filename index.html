@@ -1,0 +1,3405 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TraceMate – Smart Lost & Found Campus Application</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+<!-- =========================================================
+     AUTH SCREEN
+========================================================= -->
+
+<div id="auth-screen">
+
+  <div class="auth-left">
+
+    <div class="auth-logo">
+      <div class="auth-logo-icon">📍</div>
+      <span class="auth-logo-text">TraceMate</span>
+    </div>
+
+    <h1 class="auth-hero-title">
+      Smart Lost<br>
+      & Found for<br>
+      <span>Your Campus</span>
+    </h1>
+
+    <p class="auth-hero-sub">
+      TraceMate is a centralized digital platform for R.H. Sapat College
+      students to report, search, and recover lost items — fast, secure,
+      and verified.
+    </p>
+
+    <div class="auth-stats">
+      <div>
+        <div class="auth-stat-num" id="stat-total">0</div>
+        <div class="auth-stat-label">Items Reported</div>
+      </div>
+
+      <div>
+        <div class="auth-stat-num" id="stat-recovered">0</div>
+        <div class="auth-stat-label">Items Recovered</div>
+      </div>
+
+      <div>
+        <div class="auth-stat-num" id="stat-users">0</div>
+        <div class="auth-stat-label">Students</div>
+      </div>
+    </div>
+
+  </div>
+
+
+  <div class="auth-right">
+
+    <div class="auth-card">
+
+      <div class="auth-tabs">
+        <button
+          class="auth-tab active"
+          onclick="switchAuthTab('login')">
+          Sign In
+        </button>
+
+        <button
+          class="auth-tab"
+          onclick="switchAuthTab('register')">
+          Register
+        </button>
+      </div>
+
+
+      <!-- LOGIN -->
+
+      <div id="login-form">
+
+        <h2>Welcome to TraceMate 👋</h2>
+
+        <p class="sub">
+          Sign in with your campus account
+        </p>
+
+        <div class="form-group">
+          <label>Email Address</label>
+
+          <input
+            type="email"
+            id="login-email"
+            placeholder="you@ges-coengg.org"
+            autocomplete="off"
+            autocapitalize="none"
+            spellcheck="false">
+        </div>
+
+
+        <div class="form-group">
+
+          <label>Password</label>
+
+          <div style="display:flex;gap:10px;align-items:center;">
+
+            <input
+              type="password"
+              id="login-password"
+              placeholder="••••••••"
+              style="flex:1;"
+              autocomplete="current-password">
+
+            <button
+              type="button"
+              class="btn btn-outline btn-sm"
+              id="login-password-toggle"
+              onclick="togglePasswordVisibility(
+                'login-password',
+                'login-password-toggle'
+              )">
+              Show
+            </button>
+
+          </div>
+
+        </div>
+
+
+        <div class="auth-help-row">
+
+          <button
+            type="button"
+            class="link-btn"
+            onclick="toggleForgotPassword()">
+            Forgot password?
+          </button>
+
+        </div>
+
+
+        <button
+          class="btn btn-primary btn-full"
+          onclick="handleLogin()">
+          Sign In →
+        </button>
+
+
+        <div class="divider">
+          or
+        </div>
+
+
+        <button
+          class="btn btn-primary btn-full"
+          onclick="loginAsAdmin()">
+          Login as Admin
+        </button>
+
+      </div>
+
+
+      <!-- FORGOT PASSWORD -->
+
+      <div
+        id="forgot-modal"
+        class="forgot-modal hidden"
+        onclick="handleForgotModalBackdrop(event)">
+
+        <div
+          class="forgot-modal-card"
+          onclick="event.stopPropagation()">
+
+          <div class="forgot-modal-header">
+
+            <h3>
+              Reset Password
+            </h3>
+
+            <button
+              type="button"
+              class="icon-btn"
+              onclick="toggleForgotPassword(false)"
+              aria-label="Close">
+              X
+            </button>
+
+          </div>
+
+
+          <p class="sub">
+            Set a new password for your account.
+          </p>
+
+
+          <div class="form-group">
+
+            <label>
+              New Password
+            </label>
+
+            <div class="input-with-icon">
+
+              <input
+                type="password"
+                id="forgot-password"
+                placeholder="Create new password"
+                autocomplete="new-password">
+
+              <button
+                type="button"
+                class="icon-btn"
+                id="forgot-password-toggle"
+                onclick="togglePasswordVisibility(
+                  'forgot-password',
+                  'forgot-password-toggle'
+                )">
+                👁
+              </button>
+
+            </div>
+
+          </div>
+
+
+          <div class="form-group">
+
+            <label>
+              Confirm Password
+            </label>
+
+            <div class="input-with-icon">
+
+              <input
+                type="password"
+                id="forgot-confirm"
+                placeholder="Re-enter new password"
+                autocomplete="new-password">
+
+              <button
+                type="button"
+                class="icon-btn"
+                id="forgot-confirm-toggle"
+                onclick="togglePasswordVisibility(
+                  'forgot-confirm',
+                  'forgot-confirm-toggle'
+                )">
+                👁
+              </button>
+
+            </div>
+
+          </div>
+
+
+          <button
+            class="btn btn-primary btn-full"
+            onclick="handleForgotPassword()">
+            Reset Password
+          </button>
+
+        </div>
+
+      </div>
+
+
+      <!-- REGISTER -->
+
+      <div
+        id="register-form"
+        class="hidden">
+
+        <h2>
+          Join TraceMate ✨
+        </h2>
+
+        <p class="sub">
+          Create your student account
+        </p>
+
+
+        <div class="form-group">
+
+          <label>
+            Full Name
+          </label>
+
+          <input
+            type="text"
+            id="reg-name"
+            placeholder="Your Full Name"
+            autocomplete="name">
+
+        </div>
+
+
+        <div class="form-group">
+
+          <label>
+            Student ID
+          </label>
+
+          <input
+            type="text"
+            id="reg-student-id"
+            placeholder="e.g. STU2026001"
+            autocomplete="off">
+
+        </div>
+
+
+        <div class="form-group">
+
+          <label>
+            College Email
+          </label>
+
+          <input
+            type="email"
+            id="reg-email"
+            placeholder="you@ges-coengg.org"
+            autocomplete="off"
+            autocapitalize="none"
+            spellcheck="false">
+
+        </div>
+
+
+        <div class="form-group">
+
+          <label>
+            Password
+          </label>
+
+          <div style="display:flex;gap:10px;align-items:center;">
+
+            <input
+              type="password"
+              id="reg-password"
+              placeholder="Create password"
+              style="flex:1;"
+              autocomplete="new-password">
+
+            <button
+              type="button"
+              class="btn btn-outline btn-sm"
+              id="reg-password-toggle"
+              onclick="togglePasswordVisibility(
+                'reg-password',
+                'reg-password-toggle'
+              )">
+              Show
+            </button>
+
+          </div>
+
+        </div>
+
+
+        <div class="form-group">
+
+          <label>
+            Confirm Password
+          </label>
+
+          <div style="display:flex;gap:10px;align-items:center;">
+
+            <input
+              type="password"
+              id="reg-confirm-password"
+              placeholder="Re-enter password"
+              style="flex:1;"
+              autocomplete="new-password">
+
+            <button
+              type="button"
+              class="btn btn-outline btn-sm"
+              id="reg-confirm-password-toggle"
+              onclick="togglePasswordVisibility(
+                'reg-confirm-password',
+                'reg-confirm-password-toggle'
+              )">
+              Show
+            </button>
+
+          </div>
+
+        </div>
+
+
+        <button
+          class="btn btn-primary btn-full"
+          onclick="handleRegister()">
+          Create Account →
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+
+<!-- =========================================================
+     MAIN APPLICATION
+========================================================= -->
+
+<div id="app">
+
+  <!-- SIDEBAR -->
+
+  <nav class="sidebar">
+
+    <div class="sidebar-logo">
+
+      <div class="sidebar-logo-icon">
+        📍
+      </div>
+
+      <span class="sidebar-logo-text">
+        TraceMate
+      </span>
+
+    </div>
+
+
+    <div class="sidebar-section">
+      Main
+    </div>
+
+
+    <a
+      class="nav-item active"
+      onclick="showPage('dashboard')">
+
+      <span class="nav-icon">
+        🏠
+      </span>
+
+      Dashboard
+
+      <span
+        class="nav-badge hidden"
+        id="notif-badge">
+        0
+      </span>
+
+    </a>
+
+
+    <a
+      class="nav-item"
+      onclick="showPage('browse')">
+
+      <span class="nav-icon">
+        🔎
+      </span>
+
+      Browse Items
+
+    </a>
+
+
+    <a
+      class="nav-item"
+      onclick="showPage('report-lost')">
+
+      <span class="nav-icon">
+        📋
+      </span>
+
+      Report Lost
+
+    </a>
+
+
+    <a
+      class="nav-item"
+      onclick="showPage('report-found')">
+
+      <span class="nav-icon">
+        📦
+      </span>
+
+      Report Found
+
+    </a>
+
+
+    <a
+      class="nav-item"
+      onclick="showPage('my-reports')">
+
+      <span class="nav-icon">
+        📁
+      </span>
+
+      My Reports
+
+    </a>
+
+
+    <a
+      class="nav-item"
+      onclick="showPage('my-claims')">
+
+      <span class="nav-icon">
+        🏷️
+      </span>
+
+      My Claims
+
+      <span
+        class="nav-badge hidden"
+        id="claims-badge">
+        0
+      </span>
+
+    </a>
+
+
+    <!-- ADMIN -->
+
+    <div id="admin-nav">
+
+      <div class="sidebar-section">
+        Admin
+      </div>
+
+      <a
+        class="nav-item"
+        onclick="showPage('admin')">
+
+        <span class="nav-icon">
+          ⚙️
+        </span>
+
+        Admin Panel
+
+        <span
+          class="nav-badge hidden"
+          id="admin-badge">
+          0
+        </span>
+
+      </a>
+
+    </div>
+
+
+    <!-- =====================================================
+         USER PROFILE AREA
+         IMPORTANT:
+         This NO LONGER logs the user out.
+    ====================================================== -->
+
+    <div
+      class="sidebar-user"
+      onclick="showPage('profile')"
+      title="Open Profile"
+      style="cursor:pointer;">
+
+      <div
+        class="avatar"
+        id="user-avatar-nav">
+      </div>
+
+      <div class="user-info">
+
+        <div
+          class="user-name"
+          id="user-name-nav">
+          -
+        </div>
+
+        <div
+          class="user-role"
+          id="user-role-nav">
+          Student
+        </div>
+
+      </div>
+
+      <span
+        style="
+          color:rgba(255,255,255,0.3);
+          font-size:16px;
+        ">
+        👤
+      </span>
+
+    </div>
+
+  </nav>
+
+
+  <!-- =========================================================
+       MAIN
+  ========================================================== -->
+
+  <div class="main">
+
+
+    <!-- TOPBAR -->
+
+    <div class="topbar">
+
+      <div
+        class="topbar-title"
+        id="page-title">
+        Dashboard
+      </div>
+
+
+      <div class="topbar-search">
+
+        <span>
+          🔍
+        </span>
+
+        <input
+          type="text"
+          id="global-search"
+          placeholder="Search items..."
+          oninput="globalSearch(this.value)">
+
+      </div>
+
+
+      <!-- TOP AVATAR NOW OPENS PROFILE -->
+
+      <div
+        class="avatar"
+        id="user-avatar-top"
+        style="cursor:pointer;"
+        onclick="showPage('profile')"
+        title="Open Profile">
+      </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         DASHBOARD
+    ====================================================== -->
+
+    <div
+      class="page active"
+      id="page-dashboard">
+
+      <div
+        style="
+          background:linear-gradient(90deg,#0d1b2a,#1b2d42);
+          border-radius:var(--radius);
+          padding:14px 24px;
+          margin-bottom:20px;
+          display:flex;
+          align-items:center;
+          gap:20px;">
+
+        <div
+          style="
+            font-size:15px;
+            font-weight:700;
+            color:white;">
+          TraceMate
+        </div>
+
+      </div>
+
+
+      <div class="welcome-banner">
+
+        <div class="welcome-text">
+
+          <h2>
+            Good day,
+            <span id="welcome-name">
+              Student
+            </span>!
+            👋
+          </h2>
+
+          <p>
+            TraceMate – R.H. Sapat College Lost & Found Portal
+          </p>
+
+        </div>
+
+
+        <div class="welcome-actions">
+
+          <button
+            class="btn btn-amber"
+            onclick="showPage('report-lost')">
+            📋 Report Lost
+          </button>
+
+          <button
+            class="btn btn-primary"
+            onclick="showPage('report-found')">
+            📦 Report Found
+          </button>
+
+        </div>
+
+      </div>
+
+
+      <div class="stats-grid">
+
+        <div class="stat-card teal">
+
+          <div class="stat-icon">
+            📋
+          </div>
+
+          <div
+            class="stat-num"
+            id="dash-lost">
+            0
+          </div>
+
+          <div class="stat-label">
+            Lost Items Reported
+          </div>
+
+        </div>
+
+
+        <div class="stat-card amber">
+
+          <div class="stat-icon">
+            📦
+          </div>
+
+          <div
+            class="stat-num"
+            id="dash-found">
+            0
+          </div>
+
+          <div class="stat-label">
+            Found Items Listed
+          </div>
+
+        </div>
+
+
+        <div class="stat-card success">
+
+          <div class="stat-icon">
+            ✅
+          </div>
+
+          <div
+            class="stat-num"
+            id="dash-resolved">
+            0
+          </div>
+
+          <div class="stat-label">
+            Items Resolved
+          </div>
+
+        </div>
+
+
+        <div class="stat-card info">
+
+          <div class="stat-icon">
+            🔄
+          </div>
+
+          <div
+            class="stat-num"
+            id="dash-pending">
+            0
+          </div>
+
+          <div class="stat-label">
+            Pending Claims
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <div
+        class="grid-2"
+        style="gap:20px;">
+
+        <div class="card">
+
+          <div class="section-header">
+
+            <h3>
+              Recent Lost Items
+            </h3>
+
+            <button
+              class="btn btn-sm btn-outline"
+              onclick="showPage('browse')">
+              View All
+            </button>
+
+          </div>
+
+          <div id="recent-lost-list"></div>
+
+        </div>
+
+
+        <div class="card">
+
+          <div class="section-header">
+
+            <h3>
+              Recent Found Items
+            </h3>
+
+            <button
+              class="btn btn-sm btn-outline"
+              onclick="showPage('browse')">
+              View All
+            </button>
+
+          </div>
+
+          <div id="recent-found-list"></div>
+
+        </div>
+
+      </div>
+
+
+      <div
+        class="card mt-24"
+        id="matches-section"
+        style="display:none;">
+
+        <div class="section-header">
+
+          <h3>
+            🤖 Auto-Match Suggestions
+          </h3>
+
+          <span class="text-sm text-muted">
+            Based on your reported items
+          </span>
+
+        </div>
+
+        <div id="matches-list"></div>
+
+      </div>
+
+
+      <div
+        class="card mt-24"
+        id="notifications-section"
+        style="display:none;">
+
+        <div class="section-header">
+
+          <h3>
+            🔔 Match Notifications
+          </h3>
+
+          <button
+            class="btn btn-sm btn-outline"
+            onclick="markAllNotificationsRead()">
+            Mark All Read
+          </button>
+
+        </div>
+
+        <div id="notifications-list"></div>
+
+      </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         BROWSE
+    ====================================================== -->
+
+    <div
+      class="page"
+      id="page-browse">
+
+      <div
+        class="filter-bar"
+        id="browse-filters">
+
+        <button
+          class="filter-btn active"
+          onclick="setFilter('all',this)">
+          All Items
+        </button>
+
+        <button
+          class="filter-btn"
+          onclick="setFilter('lost',this)">
+          🔴 Lost
+        </button>
+
+        <button
+          class="filter-btn"
+          onclick="setFilter('found',this)">
+          🟢 Found
+        </button>
+
+        <button
+          class="filter-btn"
+          onclick="setFilter('electronics',this)">
+          📱 Electronics
+        </button>
+
+        <button
+          class="filter-btn"
+          onclick="setFilter('documents',this)">
+          📄 Documents
+        </button>
+
+        <button
+          class="filter-btn"
+          onclick="setFilter('accessories',this)">
+          👝 Accessories
+        </button>
+
+        <button
+          class="filter-btn"
+          onclick="setFilter('clothing',this)">
+          👗 Clothing
+        </button>
+
+        <button
+          class="filter-btn"
+          onclick="setFilter('keys',this)">
+          🔑 Keys
+        </button>
+
+        <button
+          class="filter-btn"
+          onclick="setFilter('other',this)">
+          📦 Other
+        </button>
+
+      </div>
+
+
+      <div
+        class="items-grid"
+        id="browse-grid">
+      </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         REPORT LOST
+    ====================================================== -->
+
+    <div
+      class="page"
+      id="page-report-lost">
+
+      <div
+        class="card"
+        style="max-width:640px;">
+
+        <div class="card-title">
+          📋 Report a Lost Item
+        </div>
+
+        <div class="card-sub">
+          Fill in the details to help us find your item.
+        </div>
+
+
+        <div class="form-group">
+
+          <label>
+            Item Name *
+          </label>
+
+          <input
+            type="text"
+            id="lost-name"
+            placeholder="e.g. Black Samsung Galaxy S23">
+
+        </div>
+
+
+        <div class="grid-2">
+
+          <div class="form-group">
+
+            <label>
+              Category *
+            </label>
+
+            <select id="lost-cat">
+
+              <option value="">
+                Select category
+              </option>
+
+              <option value="electronics">
+                📱 Electronics
+              </option>
+
+              <option value="documents">
+                📄 Documents / ID
+              </option>
+
+              <option value="accessories">
+                👝 Accessories
+              </option>
+
+              <option value="clothing">
+                👗 Clothing
+              </option>
+
+              <option value="keys">
+                🔑 Keys
+              </option>
+
+              <option value="books">
+                📚 Books
+              </option>
+
+              <option value="other">
+                📦 Other
+              </option>
+
+            </select>
+
+          </div>
+
+
+          <div class="form-group">
+
+            <label>
+              Date Lost *
+            </label>
+
+            <input
+              type="date"
+              id="lost-date">
+
+          </div>
+
+        </div>
+
+
+        <div class="form-group">
+
+          <label>
+            Last Known Location *
+          </label>
+
+          <input
+            type="text"
+            id="lost-location"
+            placeholder="e.g. Library 2nd Floor, Block B Canteen">
+
+        </div>
+
+
+        <div class="form-group">
+
+          <label>
+            Description
+          </label>
+
+          <textarea
+            id="lost-desc"
+            placeholder="Describe the item in detail — color, brand, any markings, distinguishing features..."></textarea>
+
+        </div>
+
+
+        <div class="form-group">
+
+          <label>
+            Upload Photo (optional)
+          </label>
+
+          <div
+            class="upload-zone"
+            id="lost-upload-zone">
+
+            <input
+              type="file"
+              accept="image/*"
+              onchange="handleImageUpload(
+                this,
+                'lost-preview',
+                'lost-upload-zone'
+              )">
+
+            <div class="upload-placeholder">
+
+              <div class="upload-icon">
+                📸
+              </div>
+
+              <div class="upload-text">
+                <strong>
+                  Click to upload
+                </strong>
+                or drag & drop
+              </div>
+
+              <div
+                class="upload-text"
+                style="
+                  font-size:12px;
+                  margin-top:4px;">
+                PNG, JPG up to 5MB
+              </div>
+
+            </div>
+
+            <img
+              id="lost-preview"
+              src=""
+              alt="">
+
+          </div>
+
+        </div>
+
+
+        <div class="form-group">
+
+          <label>
+            Contact Info
+          </label>
+
+          <input
+            type="text"
+            id="lost-contact"
+            placeholder="Phone number">
+
+        </div>
+
+
+        <div class="privacy-option">
+
+          <label class="privacy-option-row">
+
+            <input
+              type="checkbox"
+              id="lost-hide-contact">
+
+            <span>
+              Hide my contact number from other users
+            </span>
+
+          </label>
+
+          <div class="privacy-option-note">
+            If selected, your number will stay hidden until
+            you approve sharing it.
+          </div>
+
+        </div>
+
+
+        <div
+          class="flex gap-10"
+          style="margin-top:8px;">
+
+          <button
+            class="btn btn-primary"
+            onclick="submitLostItem()">
+            📋 Submit Report
+          </button>
+
+          <button
+            class="btn btn-outline"
+            onclick="resetLostForm()">
+            Reset
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         REPORT FOUND
+    ====================================================== -->
+
+    <div
+      class="page"
+      id="page-report-found">
+
+      <div
+        class="card"
+        style="max-width:640px;">
+
+        <div class="card-title">
+          📦 Report a Found Item
+        </div>
+
+        <div class="card-sub">
+          Help reunite someone with their belongings.
+        </div>
+
+
+        <div class="form-group">
+
+          <label>
+            Item Name *
+          </label>
+
+          <input
+            type="text"
+            id="found-name"
+            placeholder="e.g. Blue Jansport Backpack">
+
+        </div>
+
+
+        <div class="grid-2">
+
+          <div class="form-group">
+
+            <label>
+              Category *
+            </label>
+
+            <select id="found-cat">
+
+              <option value="">
+                Select category
+              </option>
+
+              <option value="electronics">
+                📱 Electronics
+              </option>
+
+              <option value="documents">
+                📄 Documents / ID
+              </option>
+
+              <option value="accessories">
+                👝 Accessories
+              </option>
+
+              <option value="clothing">
+                👗 Clothing
+              </option>
+
+              <option value="keys">
+                🔑 Keys
+              </option>
+
+              <option value="books">
+                📚 Books
+              </option>
+
+              <option value="other">
+                📦 Other
+              </option>
+
+            </select>
+
+          </div>
+
+
+          <div class="form-group">
+
+            <label>
+              Date Found *
+            </label>
+
+            <input
+              type="date"
+              id="found-date">
+
+          </div>
+
+        </div>
+
+
+        <div class="form-group">
+
+          <label>
+            Location Found *
+          </label>
+
+          <input
+            type="text"
+            id="found-location"
+            placeholder="e.g. Computer Lab 3, Near Parking A">
+
+        </div>
+
+
+        <div class="form-group">
+
+          <label>
+            Description
+          </label>
+
+          <textarea
+            id="found-desc"
+            placeholder="Describe what you found..."></textarea>
+
+        </div>
+
+
+        <div class="form-group">
+
+          <label>
+            Upload Photo (optional)
+          </label>
+
+          <div
+            class="upload-zone"
+            id="found-upload-zone">
+
+            <input
+              type="file"
+              accept="image/*"
+              onchange="handleImageUpload(
+                this,
+                'found-preview',
+                'found-upload-zone'
+              )">
+
+            <div class="upload-placeholder">
+
+              <div class="upload-icon">
+                📸
+              </div>
+
+              <div class="upload-text">
+                <strong>
+                  Click to upload
+                </strong>
+                or drag & drop
+              </div>
+
+              <div
+                class="upload-text"
+                style="
+                  font-size:12px;
+                  margin-top:4px;">
+                PNG, JPG up to 5MB
+              </div>
+
+            </div>
+
+            <img
+              id="found-preview"
+              src=""
+              alt="">
+
+          </div>
+
+        </div>
+
+
+        <div class="form-group">
+
+          <label>
+            Storage Location
+          </label>
+
+          <input
+            type="text"
+            id="found-storage"
+            placeholder="Where is the item kept? e.g. Security Office, Block C">
+
+        </div>
+
+
+        <div class="form-group">
+
+          <label>
+            Contact Info
+          </label>
+
+          <input
+            type="text"
+            id="found-contact"
+            placeholder="Phone number">
+
+        </div>
+
+
+        <div class="privacy-option">
+
+          <label class="privacy-option-row">
+
+            <input
+              type="checkbox"
+              id="found-hide-contact">
+
+            <span>
+              Hide my contact number from other users
+            </span>
+
+          </label>
+
+          <div class="privacy-option-note">
+            If selected, your number will stay hidden until
+            you approve sharing it.
+          </div>
+
+        </div>
+
+
+        <div
+          class="flex gap-10"
+          style="margin-top:8px;">
+
+          <button
+            class="btn btn-primary"
+            onclick="submitFoundItem()">
+            📦 Submit Report
+          </button>
+
+          <button
+            class="btn btn-outline"
+            onclick="resetFoundForm()">
+            Reset
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         MY REPORTS
+    ====================================================== -->
+
+    <div
+      class="page"
+      id="page-my-reports">
+
+      <div class="card mb-20">
+
+        <div class="section-header">
+
+          <h3>
+            My Lost Item Reports
+          </h3>
+
+          <button
+            class="btn btn-sm btn-amber"
+            onclick="showPage('report-lost')">
+            + New Report
+          </button>
+
+        </div>
+
+
+        <div class="table-wrapper">
+
+          <table>
+
+            <thead>
+
+              <tr>
+                <th>Item</th>
+                <th>Category</th>
+                <th>Date Lost</th>
+                <th>Location</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+
+            </thead>
+
+            <tbody id="my-lost-tbody"></tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+
+      <div class="card">
+
+        <div class="section-header">
+
+          <h3>
+            My Found Item Reports
+          </h3>
+
+          <button
+            class="btn btn-sm btn-primary"
+            onclick="showPage('report-found')">
+            + New Report
+          </button>
+
+        </div>
+
+
+        <div class="table-wrapper">
+
+          <table>
+
+            <thead>
+
+              <tr>
+                <th>Item</th>
+                <th>Category</th>
+                <th>Date Found</th>
+                <th>Location</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+
+            </thead>
+
+            <tbody id="my-found-tbody"></tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         MY CLAIMS
+    ====================================================== -->
+
+    <div
+      class="page"
+      id="page-my-claims">
+
+      <div class="card">
+
+        <div class="section-header">
+
+          <h3>
+            My Claim Requests
+          </h3>
+
+        </div>
+
+
+        <div class="table-wrapper">
+
+          <table>
+
+            <thead>
+
+              <tr>
+                <th>Claimed Item</th>
+                <th>Matched With</th>
+                <th>Claim Date</th>
+                <th>Status</th>
+                <th>Contact</th>
+                <th>Notes</th>
+                <th>Action</th>
+              </tr>
+
+            </thead>
+
+            <tbody id="my-claims-tbody"></tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         PROFILE PAGE
+    ====================================================== -->
+
+    <div
+      class="page"
+      id="page-profile">
+
+      <div
+        class="card"
+        style="
+          max-width:820px;
+          margin:0 auto;">
+
+        <div
+          class="section-header"
+          style="margin-bottom:24px;">
+
+          <div>
+
+            <h2
+              style="
+                margin:0;
+                color:#111;">
+              👤 My Profile
+            </h2>
+
+            <div
+              class="text-sm text-muted"
+              style="margin-top:5px;">
+              Your TraceMate account information
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <!-- PROFILE HEADER -->
+
+        <div
+          style="
+            display:flex;
+            align-items:center;
+            gap:18px;
+            padding:20px;
+            border-radius:16px;
+            background:linear-gradient(
+              135deg,
+              #0d1b2a,
+              #1b2d42
+            );
+            color:white;
+            margin-bottom:24px;">
+
+          <div
+            id="profile-avatar"
+            class="avatar"
+            style="
+              width:64px;
+              height:64px;
+              font-size:24px;
+              background:#f59e0b;
+              color:#111;">
+            ?
+          </div>
+
+
+          <div>
+
+            <div
+              id="profile-header-name"
+              style="
+                font-size:22px;
+                font-weight:800;">
+              -
+            </div>
+
+            <div
+              id="profile-header-role"
+              style="
+                margin-top:4px;
+                opacity:.75;">
+              Student
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <!-- PROFILE DETAILS -->
+
+        <div
+          style="
+            display:grid;
+            grid-template-columns:
+              repeat(
+                auto-fit,
+                minmax(260px,1fr)
+              );
+            gap:16px;">
+
+          <!-- FULL NAME -->
+
+          <div
+            style="
+              padding:18px;
+              border:1px solid #e5e7eb;
+              border-radius:14px;
+              background:#fff;">
+
+            <div
+              style="
+                font-size:12px;
+                color:#6b7280;
+                font-weight:700;
+                text-transform:uppercase;
+                margin-bottom:7px;">
+              👤 Full Name
+            </div>
+
+            <div
+              id="profile-name"
+              style="
+                font-size:16px;
+                font-weight:700;
+                color:#111;">
+              -
+            </div>
+
+          </div>
+
+
+          <!-- STUDENT ID -->
+
+          <div
+            style="
+              padding:18px;
+              border:1px solid #e5e7eb;
+              border-radius:14px;
+              background:#fff;">
+
+            <div
+              style="
+                font-size:12px;
+                color:#6b7280;
+                font-weight:700;
+                text-transform:uppercase;
+                margin-bottom:7px;">
+              🎓 Student ID
+            </div>
+
+            <div
+              id="profile-student-id"
+              style="
+                font-size:16px;
+                font-weight:700;
+                color:#111;">
+              -
+            </div>
+
+          </div>
+
+
+          <!-- EMAIL -->
+
+          <div
+            style="
+              padding:18px;
+              border:1px solid #e5e7eb;
+              border-radius:14px;
+              background:#fff;">
+
+            <div
+              style="
+                font-size:12px;
+                color:#6b7280;
+                font-weight:700;
+                text-transform:uppercase;
+                margin-bottom:7px;">
+              📧 College Email
+            </div>
+
+            <div
+              id="profile-email"
+              style="
+                font-size:16px;
+                font-weight:700;
+                color:#111;
+                word-break:break-word;">
+              -
+            </div>
+
+          </div>
+
+
+          <!-- ROLE -->
+
+          <div
+            style="
+              padding:18px;
+              border:1px solid #e5e7eb;
+              border-radius:14px;
+              background:#fff;">
+
+            <div
+              style="
+                font-size:12px;
+                color:#6b7280;
+                font-weight:700;
+                text-transform:uppercase;
+                margin-bottom:7px;">
+              🛡️ Account Type
+            </div>
+
+            <div
+              id="profile-role"
+              style="
+                font-size:16px;
+                font-weight:700;
+                color:#111;">
+              -
+            </div>
+
+          </div>
+
+
+          <!-- ACCOUNT ID -->
+
+          <div
+            style="
+              padding:18px;
+              border:1px solid #e5e7eb;
+              border-radius:14px;
+              background:#fff;">
+
+            <div
+              style="
+                font-size:12px;
+                color:#6b7280;
+                font-weight:700;
+                text-transform:uppercase;
+                margin-bottom:7px;">
+              🆔 Account ID
+            </div>
+
+            <div
+              id="profile-account-id"
+              style="
+                font-size:14px;
+                font-weight:700;
+                color:#111;
+                word-break:break-all;">
+              -
+            </div>
+
+          </div>
+
+
+          <!-- ACCOUNT STATUS -->
+
+          <div
+            style="
+              padding:18px;
+              border:1px solid #e5e7eb;
+              border-radius:14px;
+              background:#fff;">
+
+            <div
+              style="
+                font-size:12px;
+                color:#6b7280;
+                font-weight:700;
+                text-transform:uppercase;
+                margin-bottom:7px;">
+              🟢 Account Status
+            </div>
+
+            <div
+              id="profile-status"
+              style="
+                font-size:16px;
+                font-weight:700;
+                color:#15803d;">
+              Active
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <!-- PROFILE ACTIONS -->
+
+        <div
+          style="
+            display:flex;
+            gap:10px;
+            flex-wrap:wrap;
+            margin-top:24px;
+            padding-top:20px;
+            border-top:1px solid #e5e7eb;">
+
+          <button
+            class="btn btn-outline"
+            onclick="showPage('dashboard')">
+            ← Back to Dashboard
+          </button>
+
+          <button
+            class="btn btn-danger"
+            onclick="handleLogout()">
+            ↩ Logout
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         ADMIN PAGE
+    ====================================================== -->
+
+    <div
+      class="page"
+      id="page-admin">
+
+      <div class="card mb-20">
+
+        <div class="section-header">
+
+          <div>
+
+            <h2
+              style="
+                margin:0;
+                color:#111;">
+              👋 Admin Overview
+            </h2>
+
+            <div class="text-sm text-muted">
+              Manage found items, AI matching,
+              student claims and returns.
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <div
+          class="stats-grid"
+          style="margin-top:20px;">
+
+          <div class="stat-card amber">
+
+            <div class="stat-icon">
+              📦
+            </div>
+
+            <div
+              class="stat-num"
+              id="admin-attention-count">
+              0
+            </div>
+
+            <div class="stat-label">
+              Items Needing Attention
+            </div>
+
+          </div>
+
+
+          <div class="stat-card teal">
+
+            <div class="stat-icon">
+              🤖
+            </div>
+
+            <div
+              class="stat-num"
+              id="admin-high-match-count">
+              0
+            </div>
+
+            <div class="stat-label">
+              High Confidence Matches
+            </div>
+
+          </div>
+
+
+          <div class="stat-card info">
+
+            <div class="stat-icon">
+              🧾
+            </div>
+
+            <div
+              class="stat-num"
+              id="admin-ai-match-count">
+              0
+            </div>
+
+            <div class="stat-label">
+              Potential Matches
+            </div>
+
+          </div>
+
+
+          <div class="stat-card success">
+
+            <div class="stat-icon">
+              ✅
+            </div>
+
+            <div
+              class="stat-num"
+              id="admin-ai-high-count">
+              0
+            </div>
+
+            <div class="stat-label">
+              Resolved / Returned
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <!-- AI SUMMARY -->
+
+      <div class="card mb-20">
+
+        <div class="section-header">
+
+          <div>
+
+            <h3>
+              🤖 AI Matching Summary
+            </h3>
+
+            <div class="text-sm text-muted">
+              AI assists the admin; final ownership
+              decisions remain with the admin.
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <div
+          class="grid-2"
+          style="
+            gap:20px;
+            margin-top:20px;">
+
+          <div
+            style="
+              padding:18px;
+              border:1px solid #e5e7eb;
+              border-radius:14px;">
+
+            <strong style="color:#111;">
+              📋 Lost Reports Analyzed
+            </strong>
+
+            <div
+              id="admin-ai-lost-count"
+              style="
+                font-size:26px;
+                font-weight:800;
+                color:#111;
+                margin-top:6px;">
+              0
+            </div>
+
+          </div>
+
+
+          <div
+            style="
+              padding:18px;
+              border:1px solid #e5e7eb;
+              border-radius:14px;">
+
+            <strong style="color:#111;">
+              📦 Found Items Analyzed
+            </strong>
+
+            <div
+              id="admin-ai-found-count"
+              style="
+                font-size:26px;
+                font-weight:800;
+                color:#111;
+                margin-top:6px;">
+              0
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <!-- ADMIN COUNTERS -->
+
+      <div class="stats-grid">
+
+        <div class="stat-card teal">
+
+          <div class="stat-icon">
+            👥
+          </div>
+
+          <div
+            class="stat-num"
+            id="admin-users-count">
+            0
+          </div>
+
+          <div class="stat-label">
+            Registered Users
+          </div>
+
+        </div>
+
+
+        <div class="stat-card amber">
+
+          <div class="stat-icon">
+            📋
+          </div>
+
+          <div
+            class="stat-num"
+            id="admin-items-count">
+            0
+          </div>
+
+          <div class="stat-label">
+            Total Items
+          </div>
+
+        </div>
+
+
+        <div class="stat-card success">
+
+          <div class="stat-icon">
+            ⏳
+          </div>
+
+          <div
+            class="stat-num"
+            id="admin-pending-count">
+            0
+          </div>
+
+          <div class="stat-label">
+            Pending Claims
+          </div>
+
+        </div>
+
+
+        <div class="stat-card info">
+
+          <div class="stat-icon">
+            ✅
+          </div>
+
+          <div
+            class="stat-num"
+            id="admin-resolved-count">
+            0
+          </div>
+
+          <div class="stat-label">
+            Resolved
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <!-- FOUND ITEMS -->
+
+      <div class="card mb-20">
+
+        <div class="section-header">
+
+          <div>
+
+            <h3>
+              📦 Found Items — Admin Intake & AI Verification
+            </h3>
+
+            <div class="text-sm text-muted">
+              Found items stay under admin control
+              until ownership is verified.
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <div class="table-wrapper">
+
+          <table>
+
+            <thead>
+
+              <tr>
+                <th>Found Item</th>
+                <th>Reported By</th>
+                <th>Location</th>
+                <th>Status</th>
+                <th>AI / CNN</th>
+                <th>Action</th>
+              </tr>
+
+            </thead>
+
+            <tbody
+              id="admin-found-intake-tbody">
+            </tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+
+      <!-- AI WORKFLOW -->
+
+      <div class="card mb-20">
+
+        <div class="section-header">
+
+          <div>
+
+            <h3>
+              🤖 AI Matching Workflow
+            </h3>
+
+            <div class="text-sm text-muted">
+              NLP + metadata + optional CNN image similarity.
+              Admin makes the final verification.
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <div class="table-wrapper">
+
+          <table>
+
+            <thead>
+
+              <tr>
+                <th>Found Item</th>
+                <th>Location</th>
+                <th>Found Date</th>
+                <th>Status</th>
+                <th>AI Matches</th>
+                <th>Action</th>
+              </tr>
+
+            </thead>
+
+            <tbody
+              id="admin-ai-found-tbody">
+            </tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+
+      <!-- CLAIMS -->
+
+      <div class="card mb-20">
+
+        <div class="section-header">
+
+          <div>
+
+            <h3>
+              🧾 Student Claim Requests
+            </h3>
+
+            <div class="text-sm text-muted">
+              Review AI suggestions and verify the
+              student's claim before return.
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <div class="table-wrapper">
+
+          <table>
+
+            <thead>
+
+              <tr>
+                <th>Claimant</th>
+                <th>Lost Item</th>
+                <th>Found Item</th>
+                <th>Date</th>
+                <th>Match Score</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+
+            </thead>
+
+            <tbody
+              id="admin-claims-tbody">
+            </tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+
+      <!-- OLD TABLES -->
+
+      <div
+        class="card mb-20"
+        id="admin-all-lost-card"
+        style="display:none;">
+
+        <div class="section-header">
+          <h3>
+            All Lost Items
+          </h3>
+        </div>
+
+        <div class="table-wrapper">
+
+          <table>
+
+            <thead>
+
+              <tr>
+                <th>Item</th>
+                <th>Reporter</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+
+            </thead>
+
+            <tbody
+              id="admin-lost-tbody">
+            </tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+
+      <div
+        class="card"
+        id="admin-all-found-card"
+        style="display:none;">
+
+        <div class="section-header">
+
+          <h3>
+            All Found Items
+          </h3>
+
+        </div>
+
+
+        <div class="table-wrapper">
+
+          <table>
+
+            <thead>
+
+              <tr>
+                <th>Item</th>
+                <th>Reporter</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+
+            </thead>
+
+            <tbody
+              id="admin-found-tbody">
+            </tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+
+<!-- =========================================================
+     ITEM MODAL
+========================================================= -->
+
+<div
+  class="modal-overlay"
+  id="item-modal">
+
+  <div class="modal">
+
+    <div class="modal-header">
+
+      <h3 id="modal-title">
+        Item Details
+      </h3>
+
+      <button
+        class="modal-close"
+        onclick="closeModal('item-modal')">
+        ✖
+      </button>
+
+    </div>
+
+    <div
+      class="modal-body"
+      id="modal-body">
+    </div>
+
+  </div>
+
+</div>
+
+
+<!-- =========================================================
+     CLAIM MODAL
+========================================================= -->
+
+<div
+  class="modal-overlay"
+  id="claim-modal">
+
+  <div class="modal">
+
+    <div class="modal-header">
+
+      <h3 id="claim-title">
+        Claim Details
+      </h3>
+
+      <button
+        class="modal-close"
+        onclick="closeModal('claim-modal')">
+        ✖
+      </button>
+
+    </div>
+
+    <div
+      class="modal-body"
+      id="claim-body">
+    </div>
+
+  </div>
+
+</div>
+
+
+<div id="toast-container"></div>
+
+
+<!-- =========================================================
+     JAVASCRIPT FILES
+========================================================= -->
+
+<script src="js/db.js?v=20260921fix9"></script>
+<script src="js/auth.js?v=20260921fix9"></script>
+<script src="js/app.js?v=20260921fix9"></script>
+<script src="js/admin.js?v=20260921fix10"></script>
+
+
+<!-- =========================================================
+     PROFILE SYSTEM
+========================================================= -->
+
+<script>
+
+(function TraceMateProfileSystem() {
+
+  /*
+   * Render the currently logged-in user's details.
+   * Uses currentUser populated by auth.js.
+   */
+  function renderProfile() {
+
+    if (typeof currentUser === 'undefined' || !currentUser) {
+
+      /*
+       * Do NOT redirect immediately.
+       * This prevents profile clicks from accidentally
+       * behaving like logout.
+       */
+      return;
+
+    }
+
+
+    const user = currentUser;
+
+
+    const name =
+      user.name ||
+      'User';
+
+
+    const email =
+      user.email ||
+      '-';
+
+
+    const studentId =
+      user.studentId ||
+      'Not set';
+
+
+    const role =
+      user.role === 'admin'
+        ? 'Administrator'
+        : 'Student';
+
+
+    const accountId =
+      user.id ||
+      'Not available';
+
+
+    const firstLetter =
+      name.trim().charAt(0).toUpperCase() ||
+      '?';
+
+
+    const setText = function(id, value) {
+
+      const element =
+        document.getElementById(id);
+
+      if (element) {
+        element.textContent = value;
+      }
+
+    };
+
+
+    setText(
+      'profile-name',
+      name
+    );
+
+    setText(
+      'profile-student-id',
+      studentId
+    );
+
+    setText(
+      'profile-email',
+      email
+    );
+
+    setText(
+      'profile-role',
+      role
+    );
+
+    setText(
+      'profile-account-id',
+      accountId
+    );
+
+    setText(
+      'profile-status',
+      'Active'
+    );
+
+    setText(
+      'profile-header-name',
+      name
+    );
+
+    setText(
+      'profile-header-role',
+      role
+    );
+
+
+    const avatar =
+      document.getElementById(
+        'profile-avatar'
+      );
+
+    if (avatar) {
+      avatar.textContent =
+        firstLetter;
+    }
+
+  }
+
+
+  /*
+   * Expose it globally so other parts of
+   * TraceMate can refresh the profile.
+   */
+  window.renderProfile =
+    renderProfile;
+
+
+  /*
+   * Keep the original showPage() from app.js
+   * and simply add Profile support.
+   */
+  if (
+    typeof window.showPage === 'function' &&
+    !window.__traceMateProfileWrapped
+  ) {
+
+    const originalShowPage =
+      window.showPage;
+
+
+    window.showPage =
+      function(name) {
+
+        const result =
+          originalShowPage(name);
+
+
+        if (name === 'profile') {
+
+          renderProfile();
+
+        }
+
+
+        return result;
+
+      };
+
+
+    window.__traceMateProfileWrapped =
+      true;
+
+  }
+
+
+  /*
+   * If Profile is opened before currentUser
+   * is available, refresh it after login/session
+   * restoration.
+   */
+  [300, 800, 1500, 2500].forEach(
+    function(delay) {
+
+      setTimeout(
+        function() {
+
+          const profilePage =
+            document.getElementById(
+              'page-profile'
+            );
+
+          if (
+            profilePage &&
+            profilePage.classList.contains('active')
+          ) {
+
+            renderProfile();
+
+          }
+
+        },
+        delay
+      );
+
+    }
+  );
+
+
+})();
+
+</script>
+
+
+<!-- =========================================================
+     GENERAL INITIALIZATION
+========================================================= -->
+
+<script>
+
+(function initTraceMate() {
+
+  const itemModal =
+    document.getElementById(
+      'item-modal'
+    );
+
+
+  const claimModal =
+    document.getElementById(
+      'claim-modal'
+    );
+
+
+  if (itemModal) {
+
+    itemModal.addEventListener(
+      'click',
+      function(e) {
+
+        if (
+          e.target === this &&
+          typeof closeModal === 'function'
+        ) {
+
+          closeModal(
+            'item-modal'
+          );
+
+        }
+
+      }
+    );
+
+  }
+
+
+  if (claimModal) {
+
+    claimModal.addEventListener(
+      'click',
+      function(e) {
+
+        if (
+          e.target === this &&
+          typeof closeModal === 'function'
+        ) {
+
+          closeModal(
+            'claim-modal'
+          );
+
+        }
+
+      }
+    );
+
+  }
+
+
+  if (typeof today === 'function') {
+
+    const d =
+      today();
+
+
+    const lost =
+      document.getElementById(
+        'lost-date'
+      );
+
+
+    const found =
+      document.getElementById(
+        'found-date'
+      );
+
+
+    if (lost) {
+      lost.value = d;
+    }
+
+
+    if (found) {
+      found.value = d;
+    }
+
+  }
+
+
+  [
+    'login-email',
+    'login-password',
+    'reg-name',
+    'reg-student-id',
+    'reg-email',
+    'reg-password',
+    'reg-confirm-password'
+  ].forEach(
+    function(id) {
+
+      const el =
+        document.getElementById(id);
+
+      if (el) {
+        el.value = '';
+      }
+
+    }
+  );
+
+
+  if (
+    typeof restoreSession === 'function'
+  ) {
+
+    restoreSession();
+
+  }
+
+
+  if (
+    typeof setupContactPhoneInputs === 'function'
+  ) {
+
+    setupContactPhoneInputs();
+
+  }
+
+
+  try {
+
+    if (
+      typeof DB !== 'undefined' &&
+      typeof DB.get === 'function'
+    ) {
+
+      const lost =
+        DB.get('lost_items') || [];
+
+
+      const found =
+        DB.get('found_items') || [];
+
+
+      const claims =
+        DB.get('claims') || [];
+
+
+      const users =
+        DB.get('users') || [];
+
+
+      const total =
+        document.getElementById(
+          'stat-total'
+        );
+
+
+      const recovered =
+        document.getElementById(
+          'stat-recovered'
+        );
+
+
+      const userCount =
+        document.getElementById(
+          'stat-users'
+        );
+
+
+      if (total) {
+
+        total.textContent =
+          lost.length +
+          found.length;
+
+      }
+
+
+      if (recovered) {
+
+        recovered.textContent =
+          claims.filter(
+            c =>
+              c.status === 'approved' ||
+              c.status === 'returned'
+          ).length;
+
+      }
+
+
+      if (userCount) {
+
+        userCount.textContent =
+          users.filter(
+            u => u.role !== 'admin'
+          ).length;
+
+      }
+
+    }
+
+  } catch(e) {
+
+    console.warn(
+      'Could not update auth statistics:',
+      e
+    );
+
+  }
+
+
+})();
+
+</script>
+
+
+<!-- =========================================================
+     ADMIN STATS
+========================================================= -->
+
+<script>
+
+(function updateTraceMateAdminStats() {
+
+  function run() {
+
+    try {
+
+      if (
+        !window.DB ||
+        typeof DB.get !== 'function'
+      ) {
+
+        return;
+
+      }
+
+
+      const lost =
+        DB.get('lost_items') || [];
+
+
+      const found =
+        DB.get('found_items') || [];
+
+
+      const claims =
+        DB.get('claims') || [];
+
+
+      const pending =
+        found.filter(
+          x =>
+            [
+              'submitted',
+              'pending',
+              'pending_admin',
+              'received'
+            ].includes(
+              String(
+                x.status || ''
+              ).toLowerCase()
+            )
+        ).length;
+
+
+      const high =
+        claims.filter(
+          c =>
+            Number(
+              c.matchScore ??
+              c.score ??
+              c.aiScore ??
+              0
+            ) >= 80
+        ).length;
+
+
+      const returned =
+        claims.filter(
+          c =>
+            [
+              'approved',
+              'returned',
+              'closed'
+            ].includes(
+              String(
+                c.status || ''
+              ).toLowerCase()
+            )
+        ).length;
+
+
+      const set =
+        function(id, value) {
+
+          const el =
+            document.getElementById(id);
+
+          if (el) {
+            el.textContent =
+              value;
+          }
+
+        };
+
+
+      set(
+        'admin-attention-count',
+        pending
+      );
+
+      set(
+        'admin-high-match-count',
+        high
+      );
+
+      set(
+        'admin-ai-match-count',
+        claims.length
+      );
+
+      set(
+        'admin-ai-high-count',
+        returned
+      );
+
+      set(
+        'admin-ai-lost-count',
+        lost.length
+      );
+
+      set(
+        'admin-ai-found-count',
+        found.length
+      );
+
+
+    } catch (e) {
+
+      console.warn(
+        'Admin stats update failed:',
+        e
+      );
+
+    }
+
+  }
+
+
+  setTimeout(run, 400);
+  setTimeout(run, 1200);
+  setTimeout(run, 2500);
+
+
+})();
+
+</script>
+
+
+<!-- =========================================================
+     ADMIN UI
+========================================================= -->
+
+<script>
+
+(function TraceMateAdminUI() {
+
+  function isAdmin() {
+
+    const role =
+      (
+        document.getElementById(
+          'user-role-nav'
+        )?.textContent || ''
+      )
+      .trim()
+      .toLowerCase();
+
+
+    return (
+      role === 'admin' ||
+      role === 'administrator' ||
+      role.includes('admin')
+    );
+
+  }
+
+
+  function updateRoleUI() {
+
+    const admin =
+      isAdmin();
+
+
+    document
+      .querySelectorAll(
+        '.sidebar .nav-item'
+      )
+      .forEach(
+        function(item) {
+
+          const click =
+            item.getAttribute(
+              'onclick'
+            ) || '';
+
+
+          const studentOnly =
+            click.includes(
+              "showPage('report-lost')"
+            ) ||
+            click.includes(
+              "showPage('report-found')"
+            ) ||
+            click.includes(
+              "showPage('my-reports')"
+            ) ||
+            click.includes(
+              "showPage('my-claims')"
+            );
+
+
+          if (studentOnly) {
+
+            item.style.display =
+              admin
+                ? 'none'
+                : '';
+
+          }
+
+        }
+      );
+
+
+    const adminNav =
+      document.getElementById(
+        'admin-nav'
+      );
+
+
+    if (adminNav) {
+
+      adminNav.style.display =
+        admin
+          ? 'block'
+          : 'none';
+
+    }
+
+
+    const oldLost =
+      document.getElementById(
+        'admin-all-lost-card'
+      );
+
+
+    const oldFound =
+      document.getElementById(
+        'admin-all-found-card'
+      );
+
+
+    if (oldLost) {
+      oldLost.style.display =
+        'none';
+    }
+
+
+    if (oldFound) {
+      oldFound.style.display =
+        'none';
+    }
+
+
+    if (admin) {
+
+      const dashboard =
+        document.getElementById(
+          'page-dashboard'
+        );
+
+
+      const adminPage =
+        document.getElementById(
+          'page-admin'
+        );
+
+
+      if (dashboard) {
+
+        dashboard.classList.remove(
+          'active'
+        );
+
+      }
+
+
+      if (adminPage) {
+
+        adminPage.classList.add(
+          'active'
+        );
+
+      }
+
+
+      const title =
+        document.getElementById(
+          'page-title'
+        );
+
+
+      if (title) {
+
+        title.textContent =
+          'Admin Overview';
+
+      }
+
+
+      document
+        .querySelectorAll(
+          '.sidebar .nav-item'
+        )
+        .forEach(
+          function(item) {
+
+            const click =
+              item.getAttribute(
+                'onclick'
+              ) || '';
+
+
+            if (
+              click.includes(
+                "showPage('dashboard')"
+              )
+            ) {
+
+              item.classList.remove(
+                'active'
+              );
+
+            }
+
+
+            if (
+              click.includes(
+                "showPage('admin')"
+              )
+            ) {
+
+              item.classList.add(
+                'active'
+              );
+
+            }
+
+          }
+        );
+
+    }
+
+  }
+
+
+  /*
+   * Prevent admin from entering
+   * student-only pages.
+   *
+   * Profile is intentionally NOT blocked.
+   */
+  if (
+    typeof window.showPage === 'function' &&
+    !window.__traceMateAdminWrapped
+  ) {
+
+    const originalShowPage =
+      window.showPage;
+
+
+    window.showPage =
+      function(page) {
+
+        if (isAdmin()) {
+
+          const studentPages = [
+            'dashboard',
+            'report-lost',
+            'report-found',
+            'my-reports',
+            'my-claims'
+          ];
+
+
+          if (
+            studentPages.includes(page)
+          ) {
+
+            page =
+              'admin';
+
+          }
+
+        }
+
+
+        const result =
+          originalShowPage(page);
+
+
+        setTimeout(
+          updateRoleUI,
+          0
+        );
+
+
+        return result;
+
+      };
+
+
+    window.__traceMateAdminWrapped =
+      true;
+
+  }
+
+
+  updateRoleUI();
+
+
+  [
+    250,
+    800,
+    1500,
+    2500
+  ].forEach(
+    function(ms) {
+
+      setTimeout(
+        updateRoleUI,
+        ms
+      );
+
+    }
+  );
+
+
+  const role =
+    document.getElementById(
+      'user-role-nav'
+    );
+
+
+  if (role) {
+
+    new MutationObserver(
+      updateRoleUI
+    ).observe(
+      role,
+      {
+        childList: true,
+        subtree: true,
+        characterData: true
+      }
+    );
+
+  }
+
+
+})();
+
+</script>
+
+
+</body>
+</html>

@@ -1,0 +1,10 @@
+node_modules/
+.venv/
+.env
+.env.*
+!.env.example
+npm-debug.log*
+__pycache__/
+*.pyc
+
+TraceMate-Merged-Original-CNN/
