@@ -293,20 +293,7 @@
         </div>
 
 
-        <div class="form-group">
-
-          <label>
-            Student ID
-          </label>
-
-          <input
-            type="text"
-            id="reg-student-id"
-            placeholder="e.g. STU2026001"
-            autocomplete="off">
-
-        </div>
-
+       
 
         <div class="form-group">
 
@@ -1723,37 +1710,6 @@
           </div>
 
 
-          <!-- STUDENT ID -->
-
-          <div
-            style="
-              padding:18px;
-              border:1px solid #e5e7eb;
-              border-radius:14px;
-              background:#fff;">
-
-            <div
-              style="
-                font-size:12px;
-                color:#6b7280;
-                font-weight:700;
-                text-transform:uppercase;
-                margin-bottom:7px;">
-              🎓 Student ID
-            </div>
-
-            <div
-              id="profile-student-id"
-              style="
-                font-size:16px;
-                font-weight:700;
-                color:#111;">
-              -
-            </div>
-
-          </div>
-
-
           <!-- EMAIL -->
 
           <div
@@ -1770,7 +1726,7 @@
                 font-weight:700;
                 text-transform:uppercase;
                 margin-bottom:7px;">
-              📧 College Email
+              📧  Email
             </div>
 
             <div
@@ -1903,6 +1859,45 @@
             class="btn btn-danger"
             onclick="handleLogout()">
             ↩ Logout
+          </button>
+
+        </div>
+
+
+        <!-- DANGER ZONE -->
+
+        <div
+          style="
+            margin-top:24px;
+            padding:20px;
+            border:1px solid #fecaca;
+            border-radius:14px;
+            background:#fff7f7;">
+
+          <div
+            style="
+              font-size:16px;
+              font-weight:800;
+              color:#991b1b;
+              margin-bottom:6px;">
+            ⚠️ Danger Zone
+          </div>
+
+          <div
+            style="
+              color:#7f1d1d;
+              font-size:13px;
+              line-height:1.5;
+              margin-bottom:14px;">
+            Delete your TraceMate profile and associated personal records permanently.
+            This action cannot be undone.
+          </div>
+
+          <button
+            type="button"
+            class="btn btn-danger"
+            onclick="handleDeleteAccount()">
+            🗑️ Delete Profile
           </button>
 
         </div>
@@ -2501,7 +2496,7 @@
 ========================================================= -->
 
 <script src="js/db.js?v=20260921fix9"></script>
-<script src="js/auth.js?v=20260921fix9"></script>
+<script src="js/auth.js?v=20260924deleteprofile"></script>
 <script src="js/app.js?v=20260921fix9"></script>
 <script src="js/admin.js?v=20260921fix10"></script>
 
@@ -2545,10 +2540,6 @@
       '-';
 
 
-    const studentId =
-      user.studentId ||
-      'Not set';
-
 
     const role =
       user.role === 'admin'
@@ -2581,11 +2572,6 @@
     setText(
       'profile-name',
       name
-    );
-
-    setText(
-      'profile-student-id',
-      studentId
     );
 
     setText(
@@ -2813,13 +2799,14 @@
 
 
   [
-    'login-email',
-    'login-password',
-    'reg-name',
-    'reg-student-id',
-    'reg-email',
-    'reg-password',
-    'reg-confirm-password'
+    [
+  'login-email',
+  'login-password',
+  'reg-name',
+  'reg-email',
+  'reg-password',
+  'reg-confirm-password'
+]
   ].forEach(
     function(id) {
 
@@ -2832,16 +2819,6 @@
 
     }
   );
-
-
-  if (
-    typeof restoreSession === 'function'
-  ) {
-
-    restoreSession();
-
-  }
-
 
   if (
     typeof setupContactPhoneInputs === 'function'

@@ -1,4 +1,4 @@
-﻿"""
+"""
 TraceMate image feature extraction.
 
 Visual pipeline:
@@ -6,7 +6,7 @@ Visual pipeline:
     MobileNetV2
         +
     CLIP
-        Ã¢â€ â€œ
+        â†“
     Hybrid visual information
 
 MobileNetV2 remains the primary/backward-compatible embedding exposed
@@ -999,11 +999,6 @@ def image_to_embedding(
         .convert("RGB")
     )
 
-    # Generic fine-grained visual descriptors
-    visual_details = extract_visual_details(
-        image_bytes
-    )
-
     # --------------------------------------------------------
     # CLIP VISUAL RECOGNITION
     # --------------------------------------------------------
@@ -1036,7 +1031,6 @@ def image_to_embedding(
     # RESULT
     # --------------------------------------------------------
 
-
     result = {
         # IMPORTANT:
         # Keep this field for the existing Node backend.
@@ -1047,8 +1041,6 @@ def image_to_embedding(
         ),
 
         "model": model,
-
-        "visual_details": visual_details,
 
         "method": (
             "pretrained MobileNetV2 "
@@ -1084,9 +1076,6 @@ def image_to_embedding(
 
         # Human-readable visual recognition.
         "visual_recognition": visual_recognition,
-
-        # Generic fine-grained visual details
-        "visual_details": visual_details,
     }
 
     if clip_error:
@@ -1130,6 +1119,10 @@ def image_to_embedding(
                 )
             )
         )
+    )
+
+    result["visual_details"] = extract_visual_details(
+        image_bytes
     )
 
     return result

@@ -8,7 +8,6 @@ const PORT = process.env.PORT || 5000;
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://127.0.0.1:8001';
 
 const ROOT = __dirname;
-
 const DATA_DIR = path.join(ROOT, 'data');
 const DB_PATH = path.join(DATA_DIR, 'db.json');
 
@@ -1122,22 +1121,16 @@ async function enrichItemWithCNN(item) {
       Object.keys(item.visualRecognition).length > 0
     );
 
-  const hasVisualDetails =
-    !!(
-      item.visualDetails &&
-      typeof item.visualDetails === 'object' &&
-      item.visualDetails.available === true
-    );
-
   // Only skip AI enrichment when MobileNet, CLIP,
-if (
-  hasMobileNet &&
-  hasClip &&
-  hasVisualRecognition &&
-  hasVisualDetails
-) {
-  return item;
-}
+  // AND visual recognition metadata are already present.
+  if (
+    hasMobileNet &&
+    hasClip &&
+    hasVisualRecognition
+  ) {
+    return item;
+  }
+
   try {
 
     const result =
@@ -1196,18 +1189,6 @@ item.visualRecognition =
 item.clipAvailable =
   result.clipAvailable ??
   false;
-
-
-    /*
-     * Preserve generic fine-grained visual details
-     * returned by the FastAPI CV service.
-     */
-    item.visualDetails =
-      result.visualDetails ||
-      result.visual_details ||
-      item.visualDetails ||
-      item.visual_details ||
-      null;
 
     return item;
 

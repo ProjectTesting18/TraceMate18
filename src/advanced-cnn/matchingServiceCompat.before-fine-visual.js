@@ -14,26 +14,16 @@
  *  - detected image labels
  *  - MobileNetV2 image embedding
  *  - CLIP image embedding
- *  - fine-grained visual details
  *
  * IMPORTANT:
  * The returned `score` is a MATCH SCORE, not measured model accuracy.
  *
- * Visual AI contribution:
+ * Visual AI:
+ *   MobileNetV2 = 40%
+ *   CLIP        = 60%
  *
- *   MobileNetV2      = 40%
- *   CLIP             = 40%
- *   Fine Visual AI   = 20%
- *
- * The complete visual contribution remains inside the
- * existing 10-point W.cnnImage budget.
- *
- * Fine Visual AI combines:
- *   - colour structure
- *   - shape
- *   - foreground geometry
- *   - 3x3 local regions
- *   - visible OCR text
+ * The visual models share the existing 10-point CNN/visual
+ * contribution so the overall score remains 0-100.
  *
  * Location intelligence:
  *   "near canteen"
@@ -42,9 +32,6 @@
  * is understood as:
  *   same landmark + more specific sub-location.
  */
-
-const { compareVisualDetails } = require('./visualDetailMatching');
-
 
 const W = {
   category: 20,
@@ -1095,19 +1082,11 @@ function labelScore(
  * VISUAL AI
  * =========================================================
  *
- * Total visual contribution = 10 points.
+ * MobileNetV2 = 40%
+ * CLIP        = 60%
  *
- * When all three visual systems are available:
- *
- *   MobileNetV2    = 40% = 4 / 10 points
- *   CLIP           = 40% = 4 / 10 points
- *   Fine Visual AI = 20% = 2 / 10 points
- *
- * Fine Visual AI is supplied by visualDetailMatching.js.
- *
- * If a component is unavailable, the remaining available
- * components are re-normalized so missing AI services do not
- * automatically destroy the visual score.
+ * The combined visual score remains inside the existing
+ * W.cnnImage = 10 point budget.
  */
 
 
@@ -1206,16 +1185,14 @@ function cosineToPercentage(
 
 
 /*
- * Compare MobileNetV2, CLIP and fine visual details.
+ * Compare MobileNetV2 and CLIP separately,
+ * then calculate the hybrid visual score.
  *
- * Normal configuration:
+ * MobileNetV2 = 40%
+ * CLIP        = 60%
  *
- *   MobileNetV2      40%
- *   CLIP             40%
- *   Fine Visual AI   20%
- *
- * The resulting percentage is converted into the existing
- * W.cnnImage = 10 point visual contribution.
+ * These are engineering weights,
+ * NOT experimentally measured accuracy.
  */
 function cnnScore(
   lost,
@@ -1244,194 +1221,75 @@ function cnnScore(
       clipCosine
     );
 
-
-  /*
-   * Fine-grained visual comparison.
-   *
-   * This is now part of the actual visual score.
-   */
-  const fineVisualDetails =
-    compareVisualDetails(
-      lost?.visualDetails ||
-      lost?.visual_details ||
-      null,
-
-      found?.visualDetails ||
-      found?.visual_details ||
-      null
-    );
-
-  const fineVisualPercentage =
-    fineVisualDetails &&
-    fineVisualDetails.available &&
-    Number.isFinite(
-      Number(
-        fineVisualDetails.percentage
-      )
-    )
-      ? Number(
-          fineVisualDetails.percentage
-        )
-      : null;
-
-
   const hasMobileNet =
     mobileNetPercentage !== null;
 
   const hasClip =
     clipPercentage !== null;
 
-  const hasFineVisual =
-    fineVisualPercentage !== null;
-
-
-  /*
-   * Engineering weights.
-   *
-   * IMPORTANT:
-   * These are contribution weights, NOT measured model
-   * accuracy.
-   */
-  const configuredMobileNetWeight = 0.40;
-  const configuredClipWeight = 0.40;
-  const configuredFineVisualWeight = 0.20;
-
-
-  /*
-   * Only include components that are actually available.
-   *
-   * This means:
-   *
-   * MobileNet + CLIP + Fine:
-   *   40 / 40 / 20
-   *
-   * MobileNet + CLIP:
-   *   50 / 50
-   *
-   * MobileNet + Fine:
-   *   66.67 / 33.33
-   *
-   * CLIP + Fine:
-   *   66.67 / 33.33
-   *
-   * MobileNet only:
-   *   100%
-   *
-   * CLIP only:
-   *   100%
-   *
-   * Fine only:
-   *   100%
-   */
-  const availableWeightTotal =
-    (
-      hasMobileNet
-        ? configuredMobileNetWeight
-        : 0
-    ) +
-    (
-      hasClip
-        ? configuredClipWeight
-        : 0
-    ) +
-    (
-      hasFineVisual
-        ? configuredFineVisualWeight
-        : 0
-    );
-
-
-  let mobileNetWeight = 0;
-  let clipWeight = 0;
-  let fineVisualWeight = 0;
-
-  if (
-    availableWeightTotal > 0
-  ) {
-
-    mobileNetWeight =
-      hasMobileNet
-        ? configuredMobileNetWeight /
-          availableWeightTotal
-        : 0;
-
-    clipWeight =
-      hasClip
-        ? configuredClipWeight /
-          availableWeightTotal
-        : 0;
-
-    fineVisualWeight =
-      hasFineVisual
-        ? configuredFineVisualWeight /
-          availableWeightTotal
-        : 0;
-  }
-
-
-  /*
-   * Calculate final visual percentage.
-   */
   let percentage = null;
 
   let model = 'none';
 
+  let mobileNetWeight = 0;
 
+  let clipWeight = 0;
+
+
+  /*
+   * Both models available.
+   */
   if (
-    availableWeightTotal > 0
+    hasMobileNet &&
+    hasClip
   ) {
 
-    percentage = 0;
+    mobileNetWeight = 0.40;
 
-    if (
-      hasMobileNet
-    ) {
-      percentage +=
-        mobileNetPercentage *
-        mobileNetWeight;
-    }
+    clipWeight = 0.60;
 
-    if (
-      hasClip
-    ) {
-      percentage +=
-        clipPercentage *
+    percentage =
+      mobileNetPercentage *
+        mobileNetWeight +
+      clipPercentage *
         clipWeight;
-    }
-
-    if (
-      hasFineVisual
-    ) {
-      percentage +=
-        fineVisualPercentage *
-        fineVisualWeight;
-    }
-
-
-    const modelParts = [];
-
-    if (hasMobileNet) {
-      modelParts.push(
-        'MobileNetV2'
-      );
-    }
-
-    if (hasClip) {
-      modelParts.push(
-        'CLIP'
-      );
-    }
-
-    if (hasFineVisual) {
-      modelParts.push(
-        'Fine Visual AI'
-      );
-    }
 
     model =
-      modelParts.join(
-        ' + '
-      );
+      'MobileNetV2 + CLIP';
+  }
+
+
+  /*
+   * Only MobileNetV2 available.
+   */
+  else if (
+    hasMobileNet
+  ) {
+
+    mobileNetWeight = 1;
+
+    percentage =
+      mobileNetPercentage;
+
+    model =
+      'MobileNetV2';
+  }
+
+
+  /*
+   * Only CLIP available.
+   */
+  else if (
+    hasClip
+  ) {
+
+    clipWeight = 1;
+
+    percentage =
+      clipPercentage;
+
+    model =
+      'CLIP';
   }
 
 
@@ -1648,11 +1506,6 @@ function cnnScore(
     sizeConflict ||
     colorConflict;
 
-
-  /*
-   * Convert final visual percentage into the existing
-   * 10-point visual contribution.
-   */
   const points =
     percentage === null
       ? 0
@@ -1710,29 +1563,13 @@ function cnnScore(
 
 
     /*
-     * Fine Visual AI.
-     */
-    fineVisualPercentage:
-      fineVisualPercentage === null
-        ? null
-        : Math.round(
-            fineVisualPercentage * 10
-          ) / 10,
-
-    fineVisualDetails,
-
-
-    /*
      * Hybrid weights.
      */
     mobileNetWeight,
 
     clipWeight,
 
-    fineVisualWeight,
-
     model,
-
 
     /*
      * Human-readable visual recognition.
@@ -2936,16 +2773,6 @@ function calculateMatchScore(
 
 
   if (
-    image.fineVisualPercentage != null
-  ) {
-
-    reasons.push(
-      `Fine visual detail similarity ${image.fineVisualPercentage}%`
-    );
-  }
-
-
-  if (
     image.visualRecognition?.lost?.objectType &&
     image.visualRecognition?.found?.objectType
   ) {
@@ -3015,114 +2842,6 @@ function calculateMatchScore(
     reasons.push(
       'AI detected a strong visual color difference'
     );
-  }
-
-
-  /*
-   * Fine-grained visual evidence.
-   */
-  if (
-    image.fineVisualDetails &&
-    image.fineVisualDetails.available
-  ) {
-
-    const fine =
-      image.fineVisualDetails;
-
-    if (
-      fine.percentage != null
-    ) {
-      reasons.push(
-        'Fine visual detail similarity ' +
-        fine.percentage +
-        '%'
-      );
-    }
-
-    if (
-      fine.shapeSimilarityPercentage != null
-    ) {
-      reasons.push(
-        'AI shape similarity ' +
-        fine.shapeSimilarityPercentage +
-        '%'
-      );
-    }
-
-    if (
-      fine.colorSimilarityPercentage != null
-    ) {
-      reasons.push(
-        'AI colour structure similarity ' +
-        fine.colorSimilarityPercentage +
-        '%'
-      );
-    }
-
-    if (
-      fine.regionSimilarityPercentage != null
-    ) {
-      reasons.push(
-        'AI local-region similarity ' +
-        fine.regionSimilarityPercentage +
-        '%'
-      );
-    }
-
-    if (
-      fine.foregroundSimilarityPercentage != null
-    ) {
-      reasons.push(
-        'AI foreground geometry similarity ' +
-        fine.foregroundSimilarityPercentage +
-        '%'
-      );
-    }
-
-    if (
-      fine.ocrSimilarityPercentage != null
-    ) {
-      reasons.push(
-        'AI visible-text similarity ' +
-        fine.ocrSimilarityPercentage +
-        '%'
-      );
-    }
-
-    const mismatches =
-      Array.isArray(
-        fine.mismatches
-      )
-        ? fine.mismatches
-        : [];
-
-    mismatches
-      .slice(0, 3)
-      .forEach(
-        mismatch => {
-
-          const message =
-            typeof mismatch === 'string'
-              ? mismatch
-              : (
-                  mismatch?.message ||
-                  mismatch?.description ||
-                  mismatch?.reason ||
-                  mismatch?.detail ||
-                  ''
-                );
-
-          if (
-            String(message).trim()
-          ) {
-
-            reasons.push(
-              'AI local visual difference: ' +
-              String(message)
-            );
-          }
-        }
-      );
   }
 
 
@@ -3312,16 +3031,6 @@ function calculateMatchScore(
 
 
     /*
-     * Fine Visual AI.
-     */
-    fineVisualSimilarityPercentage:
-      image.fineVisualPercentage,
-
-    fineVisualDetails:
-      image.fineVisualDetails,
-
-
-    /*
      * Final hybrid visual score.
      */
     visualSimilarityPercentage:
@@ -3340,16 +3049,9 @@ function calculateMatchScore(
         image.mobileNetWeight,
 
       clip:
-        image.clipWeight,
-
-      fineVisual:
-        image.fineVisualWeight
+        image.clipWeight
     },
 
-
-    /*
-     * Visual recognition.
-     */
     visualRecognition:
       image.visualRecognition,
 
@@ -3385,45 +3087,6 @@ function calculateMatchScore(
 
       visualAIMax:
         W.cnnImage,
-
-      mobileNetV2:
-        image.mobileNetPercentage === null
-          ? 0
-          : Math.round(
-              (
-                image.mobileNetPercentage /
-                100
-              ) *
-              W.cnnImage *
-              image.mobileNetWeight
-            * 10
-            ) / 10,
-
-      clip:
-        image.clipPercentage === null
-          ? 0
-          : Math.round(
-              (
-                image.clipPercentage /
-                100
-              ) *
-              W.cnnImage *
-              image.clipWeight
-            * 10
-            ) / 10,
-
-      fineVisual:
-        image.fineVisualPercentage === null
-          ? 0
-          : Math.round(
-              (
-                image.fineVisualPercentage /
-                100
-              ) *
-              W.cnnImage *
-              image.fineVisualWeight
-            * 10
-            ) / 10,
 
       locationContext:
         locationContextBoost,

@@ -2721,13 +2721,48 @@ async function confirmAIMatch(
 async function returnMatchedItem(
   foundId
 ) {
+  /*
+   * Student ID is optional now.
+   *
+   * If the owner has a Student ID,
+   * admin can verify using it.
+   *
+   * If the owner does not have a Student ID,
+   * admin can verify using the registered email.
+   */
+
   const studentId =
     prompt(
-      'Enter the owner Student ID after verifying it physically:'
+      'Enter the owner Student ID if available.\n\nLeave blank if the owner does not have a Student ID:'
     );
 
-  if (!studentId) {
+  if (studentId === null) {
     return;
+  }
+
+  let ownerEmail = '';
+
+  if (!studentId.trim()) {
+    ownerEmail =
+      prompt(
+        'Student ID not provided.\n\nEnter the owner registered email address after verifying it physically:'
+      );
+
+    if (ownerEmail === null) {
+      return;
+    }
+
+    ownerEmail =
+      ownerEmail.trim();
+
+    if (!ownerEmail) {
+      toast(
+        'Owner email is required when Student ID is not provided.',
+        'error'
+      );
+
+      return;
+    }
   }
 
   const notes =
@@ -2746,10 +2781,13 @@ async function returnMatchedItem(
             foundId,
 
           studentId:
-            studentId,
+            studentId.trim(),
+
+          ownerEmail:
+            ownerEmail,
 
           notes:
-            notes
+            notes.trim()
         })
       }
     );
@@ -2771,9 +2809,7 @@ async function returnMatchedItem(
       'error'
     );
   }
-}
-
-// ═══════════════════════════════════════════════════════════════════════
+}// ═══════════════════════════════════════════════════════════════════════
 // ADMIN RENDER WRAPPER
 // ═══════════════════════════════════════════════════════════════════════
 

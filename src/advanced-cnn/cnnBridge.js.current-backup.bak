@@ -1,4 +1,4 @@
-﻿const AI_SERVICE_URL =
+const AI_SERVICE_URL =
   process.env.AI_SERVICE_URL || 'http://127.0.0.1:8001';
 
 async function requestEmbeddingFromDataUrl(dataUrl) {
@@ -91,10 +91,6 @@ async function requestEmbeddingFromDataUrl(dataUrl) {
     visualRecognition:
       result.visual_recognition ||
       result.visualRecognition ||
-      null,
-    visualDetails:
-      result.visual_details ||
-      result.visualDetails ||
       null
   };
 }
