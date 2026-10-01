@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -6,6 +6,210 @@
 <title>TraceMate – Smart Lost & Found Campus Application</title>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
+
+<style id="tracemate-notification-styles">
+.notification-wrap{
+  position:relative;
+  z-index:600;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  margin-left:6px;
+}
+.notification-bell{
+  position:relative;
+  width:42px;
+  height:42px;
+  border:1px solid var(--border,#dfe6ee);
+  border-radius:12px;
+  background:rgba(255,255,255,.7);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  transition:.2s;
+}
+.notification-bell:hover,
+.notification-bell.has-unread{
+  border-color:#22a6a8;
+  box-shadow:0 6px 18px rgba(34,166,168,.16);
+  transform:translateY(-1px);
+}
+.notification-bell-icon{
+  font-size:19px;
+  line-height:1;
+}
+.notification-count{
+  position:absolute;
+  top:-6px;
+  right:-6px;
+  min-width:19px;
+  height:19px;
+  padding:0 5px;
+  border-radius:999px;
+  background:#ef4444;
+  color:#fff;
+  font-size:10px;
+  font-weight:800;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border:2px solid #fff;
+}
+.notification-count.hidden{
+  display:none;
+}
+.notification-panel{
+  position:absolute;
+  top:50px;
+  right:0;
+  width:390px;
+  max-width:min(390px,calc(100vw - 30px));
+  background:#fff;
+  border:1px solid #dfe6ee;
+  border-radius:16px;
+  box-shadow:0 18px 50px rgba(15,23,42,.18);
+  z-index:500;
+  display:none;
+  overflow:hidden;
+}
+.notification-panel.open{
+  display:block;
+  animation:traceNotifIn .18s ease-out;
+}
+@keyframes traceNotifIn{
+  from{opacity:0;transform:translateY(-5px)}
+  to{opacity:1;transform:translateY(0)}
+}
+.notification-panel-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:15px 17px;
+  border-bottom:1px solid #e8edf3;
+  background:#f8fafc;
+}
+.notification-panel-head strong{
+  font-size:15px;
+  color:#102033;
+}
+.notification-mark-all{
+  border:0;
+  background:transparent;
+  color:#0f8b8d;
+  font-size:12px;
+  font-weight:700;
+  cursor:pointer;
+}
+.notification-panel-list{
+  max-height:440px;
+  overflow:auto;
+}
+.notification-card{
+  display:flex;
+  gap:11px;
+  padding:14px 15px;
+  border-bottom:1px solid #edf1f5;
+  transition:.15s;
+}
+.notification-card:hover{
+  background:#f8fbfc;
+}
+.notification-card.unread{
+  background:#eefafa;
+}
+.notification-card-icon{
+  width:36px;
+  height:36px;
+  border-radius:10px;
+  background:#e8f7f7;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex:0 0 36px;
+  font-size:18px;
+}
+.notification-card-content{
+  min-width:0;
+  flex:1;
+}
+.notification-card-top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:4px;
+}
+.notification-card-top strong{
+  font-size:13px;
+  color:#102033;
+}
+.notification-card-top span{
+  font-size:10px;
+  color:#8793a3;
+  white-space:nowrap;
+}
+.notification-card-message{
+  font-size:12px;
+  line-height:1.45;
+  color:#526174;
+}
+.notification-score{
+  display:inline-block;
+  margin-top:7px;
+  padding:3px 7px;
+  border-radius:999px;
+  background:#eaf5ff;
+  color:#2563eb;
+  font-size:10px;
+  font-weight:700;
+}
+.notification-card-actions{
+  display:flex;
+  gap:7px;
+  flex-wrap:wrap;
+  margin-top:9px;
+}
+.notification-card-actions .btn{
+  font-size:11px!important;
+  padding:6px 9px!important;
+}
+.notification-empty{
+  text-align:center;
+  padding:38px 20px;
+  color:#738196;
+  font-size:13px;
+}
+.notification-empty-icon{
+  font-size:28px;
+  margin-bottom:8px;
+}
+.notification-empty small{
+  display:block;
+  margin-top:5px;
+  color:#9aa6b5;
+  font-size:11px;
+}
+@media(max-width:700px){
+  .notification-panel{
+    right:-50px;
+    width:calc(100vw - 24px);
+  }
+  .notification-bell{
+    width:38px;
+    height:38px;
+  }
+}
+
+.ai-match-breakdown{margin-top:12px;padding:12px;border:1px solid var(--border,#dfe6ee);border-radius:12px;background:rgba(248,250,252,.9)}
+.ai-match-breakdown-title{font-size:12px;font-weight:800;color:#102033;margin-bottom:9px}
+.ai-match-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.ai-match-factor{display:flex;justify-content:space-between;gap:8px;padding:7px 9px;background:#fff;border:1px solid #edf1f5;border-radius:8px;font-size:11px;color:#526174}
+.ai-match-factor strong{color:#102033;font-size:11px}
+.ai-match-method{margin-top:8px;font-size:10px;color:#8793a3}
+@media(max-width:600px){.ai-match-grid{grid-template-columns:1fr}}
+</style>
+
 </head>
 
 <body>
@@ -614,6 +818,37 @@
 
       </div>
 
+
+      <!-- STUDENT NOTIFICATIONS -->
+      <div class="notification-wrap" id="notification-wrap">
+        <button
+          type="button"
+          class="notification-bell"
+          id="notification-bell"
+          onclick="toggleNotificationPanel(event)"
+          aria-label="Notifications"
+          title="Notifications">
+          <span class="notification-bell-icon">🔔</span>
+          <span class="notification-count hidden" id="notification-count">0</span>
+        </button>
+
+        <div class="notification-panel" id="notification-panel">
+          <div class="notification-panel-head">
+            <strong>🔔 Notifications</strong>
+            <button
+              type="button"
+              class="notification-mark-all"
+              onclick="markAllNotificationsRead()">
+              Mark all read
+            </button>
+          </div>
+
+          <div
+            class="notification-panel-list"
+            id="notification-panel-list">
+          </div>
+        </div>
+      </div>
 
       <!-- TOP AVATAR NOW OPENS PROFILE -->
 
@@ -2497,7 +2732,7 @@
 
 <script src="js/db.js?v=20260921fix9"></script>
 <script src="js/auth.js?v=20260924deleteprofile"></script>
-<script src="js/app.js?v=20260921fix9"></script>
+<script src="js/app.js?v=20261001notifications2"></script>
 <script src="js/admin.js?v=20260921fix10"></script>
 
 
