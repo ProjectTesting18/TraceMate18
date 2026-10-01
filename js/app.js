@@ -998,3 +998,1003 @@ function resetLostForm() {
   document.getElementById('lost-preview').src = '';
   document.querySelector('#lost-upload-zone .upload-placeholder').style.display = 'block';
   document.getElementById('lost-upload-zone').classList.remove('has-image');
+  lostImageData = '';
+  setReportFormMode('lost', false);
+  if (wasEditing) showPage('my-reports');
+}
+
+function resetFoundForm() {
+  const wasEditing = reportEditState.type === 'found';
+  reportEditState = { id: null, type: null };
+  ['found-name','found-location','found-desc','found-storage','found-contact'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('found-cat').value  = '';
+  document.getElementById('found-date').value = '';
+  const foundHideContact = document.getElementById('found-hide-contact');
+  if (foundHideContact) foundHideContact.checked = false;
+  document.getElementById('found-preview').style.display = 'none';
+  document.getElementById('found-preview').src = '';
+  document.querySelector('#found-upload-zone .upload-placeholder').style.display = 'block';
+  document.getElementById('found-upload-zone').classList.remove('has-image');
+  foundImageData = '';
+  setReportFormMode('found', false);
+  if (wasEditing) showPage('my-reports');
+}
+
+async function updateLostItemFromForm(user) {
+  const id = reportEditState.id;
+  const items = DB.get('lost_items');
+  const index = items.findIndex(i => i.id === id && i.userId === user.id);
+  if (index < 0) {
+    toast('Lost report could not be found', 'error');
+    return;
+  }
+
+  const item = items[index];
+  const name = document.getElementById('lost-name').value.trim();
+  const cat = document.getElementById('lost-cat').value;
+  const date = document.getElementById('lost-date').value;
+  const loc = document.getElementById('lost-location').value.trim();
+  if (!name || !cat || !date || !loc) {
+    toast('Please fill all required fields', 'error');
+    return;
+  }
+
+  const contact = document.getElementById('lost-contact').value.trim();
+  const contactError = validateContact(contact);
+  if (contactError) {
+    toast(contactError, 'error');
+    return;
+  }
+
+  const updatedItem = {
+    ...item,
+    name,
+    category: cat,
+    date,
+    location: loc,
+    desc: document.getElementById('lost-desc').value.trim(),
+    contact,
+    contactHidden: document.getElementById('lost-hide-contact')?.checked || false,
+    image: lostImageData || '',
+    updated: today(),
+  };
+
+  try {
+    items[index] = updatedItem;
+    DB.set('lost_items', items);
+    reportEditState = { id: null, type: null };
+    lostImageData = '';
+    resetLostForm();
+    toast('Lost report updated successfully! ✏️', 'success');
+    renderMyReports();
+    setTimeout(() => showPage('my-reports'), 250);
+    runAutoMatch(updatedItem, 'lost');
+  } catch (err) {
+    toast(err.message || 'Could not update the lost report', 'error');
+  }
+}
+
+async function updateFoundItemFromForm(user) {
+  const id = reportEditState.id;
+  const items = DB.get('found_items');
+  const index = items.findIndex(i => i.id === id && i.userId === user.id);
+  if (index < 0) {
+    toast('Found report could not be found', 'error');
+    return;
+  }
+
+  const item = items[index];
+  const name = document.getElementById('found-name').value.trim();
+  const cat = document.getElementById('found-cat').value;
+  const date = document.getElementById('found-date').value;
+  const loc = document.getElementById('found-location').value.trim();
+  if (!name || !cat || !date || !loc) {
+    toast('Please fill all required fields', 'error');
+    return;
+  }
+
+  const contact = document.getElementById('found-contact').value.trim();
+  const contactError = validateContact(contact);
+  if (contactError) {
+    toast(contactError, 'error');
+    return;
+  }
+
+  const updatedItem = {
+    ...item,
+    name,
+    category: cat,
+    foundDate: date,
+    location: loc,
+    desc: document.getElementById('found-desc').value.trim(),
+    storage: document.getElementById('found-storage').value.trim(),
+    contact,
+    contactHidden: document.getElementById('found-hide-contact')?.checked || false,
+    image: foundImageData || '',
+    updated: today(),
+  };
+
+  try {
+    items[index] = updatedItem;
+    DB.set('found_items', items);
+    reportEditState = { id: null, type: null };
+    foundImageData = '';
+    resetFoundForm();
+    toast('Found report updated successfully! ✏️', 'success');
+    renderMyReports();
+    setTimeout(() => showPage('my-reports'), 250);
+    runAutoMatch(updatedItem, 'found');
+  } catch (err) {
+    toast(err.message || 'Could not update the found report', 'error');
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  MY REPORTS
+// ═══════════════════════════════════════════════
+function renderMyReports() {
+  if (!currentUser) return;
+  const lost  = DB.get('lost_items').filter(i => i.userId === currentUser.id);
+  const found = DB.get('found_items').filter(i => i.userId === currentUser.id);
+
+  const lostTbody = document.getElementById('my-lost-tbody');
+  lostTbody.innerHTML = lost.length ? lost.map(i => {
+    const editable = isReportEditable(i);
+    return `
+    <tr>
+      <td><strong>${i.name}</strong></td>
+      <td><span class="cat-tag">${getCatEmoji(i.category)} ${capitalize(i.category)}</span></td>
+      <td>${fmtDate(i.date)}</td>
+      <td>${i.location}</td>
+      <td><span class="status status-${i.status === 'open' ? 'lost' : i.status}">${i.status}</span></td>
+      <td>
+        <div class="action-btns">
+          <button class="btn btn-sm btn-outline" onclick="openItemModal('${i.id}','lost')">View</button>
+          ${editable ? `<button class="btn btn-sm btn-outline" onclick="editReport('${i.id}','lost')">Edit</button>` : ''}
+          ${i.status === 'open' ? `<button class="btn btn-sm btn-danger" onclick="deleteItem('${i.id}','lost')">Delete</button>` : ''}
+        </div>
+      </td>
+    </tr>
+  `;
+  }).join('') : '<tr><td colspan="6"><div class="empty-state" style="padding:24px;">No lost item reports yet.</div></td></tr>';
+
+  const foundTbody = document.getElementById('my-found-tbody');
+  foundTbody.innerHTML = found.length ? found.map(i => {
+    const editable = isReportEditable(i);
+    return `
+    <tr>
+      <td><strong>${i.name}</strong></td>
+      <td><span class="cat-tag">${getCatEmoji(i.category)} ${capitalize(i.category)}</span></td>
+      <td>${fmtDate(i.foundDate)}</td>
+      <td>${i.location}</td>
+      <td><span class="status status-${i.status}">${i.status}</span></td>
+      <td>
+        <div class="action-btns">
+          <button class="btn btn-sm btn-outline" onclick="openItemModal('${i.id}','found')">View</button>
+          ${editable ? `<button class="btn btn-sm btn-outline" onclick="editReport('${i.id}','found')">Edit</button>` : ''}
+          ${i.status === 'open' ? `<button class="btn btn-sm btn-danger" onclick="deleteItem('${i.id}','found')">Delete</button>` : ''}
+        </div>
+      </td>
+    </tr>
+  `;
+  }).join('') : '<tr><td colspan="6"><div class="empty-state" style="padding:24px;">No found item reports yet.</div></td></tr>';
+}
+
+function deleteItem(id, type) {
+  if (!confirm('Delete this report?')) return;
+  const key   = type === 'lost' ? 'lost_items' : 'found_items';
+  const items = DB.get(key).filter(i => i.id !== id);
+  DB.set(key, items);
+  toast('Report deleted', 'success');
+  renderMyReports();
+}
+
+// ═══════════════════════════════════════════════
+//  CLAIMS
+// ═══════════════════════════════════════════════
+async function showClaimPrompt(foundItemId) {
+  if (!currentUser || currentUser.role === 'admin') return;
+  const lost  = DB.get('lost_items').filter(i => i.userId === currentUser.id && i.status === 'open');
+  const found = DB.get('found_items').find(i => i.id === foundItemId);
+  if (!found) return;
+
+  document.getElementById('modal-title').textContent = 'AI Match Review: ' + found.name;
+  document.getElementById('modal-body').innerHTML = `
+    <div class="empty-state" style="padding:24px;">
+      <div class="empty-icon">🤖</div>
+      <p>TraceMate AI is comparing your lost report with the found item.</p>
+      <small>CNN/CLIP image analysis + NLP + category, location and date signals.</small>
+    </div>
+  `;
+  openModal('item-modal');
+
+  const ranked = [];
+  for (const item of lost) {
+    const analysis = await getHybridMatchAnalysis(item, found);
+    ranked.push({ item, analysis });
+  }
+  ranked.sort((a, b) => b.analysis.score - a.analysis.score);
+
+  document.getElementById('modal-body').innerHTML = `
+    ${lost.length === 0
+      ? `<div class="empty-state" style="padding:24px;">
+           <div class="empty-icon">📋</div>
+           <p>You have no open lost item reports to match with.</p>
+           <button class="btn btn-amber" style="margin-top:12px;" onclick="closeModal('item-modal');showPage('report-lost');">Report Lost Item First</button>
+         </div>`
+      : ranked.map(({ item: l, analysis }, index) => `
+          <div class="match-card match-card-claim">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap;">
+              <div class="match-info" style="margin-bottom:0;">
+                <div class="match-title">${escapeHtml(l.name)}</div>
+                <div class="match-meta">Found item: ${escapeHtml(found.name)}</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
+                <div class="match-score">${analysis.score}%</div>
+                ${index === 0 ? '<span class="status status-approved" style="padding:3px 8px;">Highest AI match</span>' : ''}
+              </div>
+            </div>
+            <div class="admin-compare-grid" style="margin-top:12px;">
+              ${renderClaimCompareCard(found, 'Found Item')}
+              ${renderClaimCompareCard(l, 'Your Lost Item', analysis.score)}
+            </div>
+            ${renderAIMatchBreakdown(analysis)}
+            <div class="claim-compare-actions" style="margin-top:14px;justify-content:space-between;">
+              <div style="font-size:12px;color:var(--gray3);align-self:center;">AI score is decision support; Admin performs final identity verification.</div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
+                <button class="btn btn-sm btn-success" onclick="submitClaim('${l.id}','${foundItemId}',${analysis.score})">Approve</button>
+                <button class="btn btn-sm btn-danger" onclick="closeModal('item-modal')">Reject</button>
+              </div>
+            </div>
+          </div>
+        `).join('')
+    }
+  `;
+}
+
+function submitClaim(lostId, foundId, score) {
+  const claims = DB.get('claims');
+  const exists = claims.find(c => c.lostItemId === lostId && c.foundItemId === foundId);
+  if (exists) { toast('Claim already submitted', 'error'); return; }
+
+  const lostItem = DB.get('lost_items').find(i => i.id === lostId);
+  const foundItem = DB.get('found_items').find(i => i.id === foundId);
+  const lostReporterApproved = currentUser.id === lostItem?.userId;
+  const foundReporterApproved = currentUser.id === foundItem?.userId;
+
+  const claim = {
+    id: genId(), lostItemId: lostId, foundItemId: foundId,
+    claimantId: currentUser.id, date: today(),
+    status: 'pending_user', score,
+    lostReporterApproved,
+    foundReporterApproved,
+    notes: 'Waiting for user-side approval before admin verification',
+    pickupLocation: '', pickupTime: '', pickupNotes: '',
+    messages: [],
+  };
+  claims.push(claim);
+  DB.set('claims', claims);
+
+  syncClaimItemStatuses(lostId, foundId);
+
+  closeModal('item-modal');
+  toast('Claim submitted! Waiting for user approval first. 🏷️', 'success');
+  updateBadges();
+  refreshDashboard();
+}
+
+function initiateClaim(lostId, foundId, score) {
+  submitClaim(lostId, foundId, score);
+}
+
+function renderMyClaims() {
+  if (!currentUser) return;
+  const allClaims = DB.get('claims');
+  const lost   = DB.get('lost_items');
+  const found  = DB.get('found_items');
+  const users  = DB.get('users');
+  const tbody  = document.getElementById('my-claims-tbody');
+  const claims = allClaims.filter(c => {
+    if (c.claimantId === currentUser.id) return true;
+    const l = lost.find(i => i.id === c.lostItemId);
+    const f = found.find(i => i.id === c.foundItemId);
+    return l?.userId === currentUser.id || f?.userId === currentUser.id;
+  });
+
+  if (!claims.length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state" style="padding:24px;">No claims submitted yet.</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = claims.map(c => {
+    const status = normalizeClaimStatus(c);
+    const l = lost.find(i  => i.id === c.lostItemId);
+    const f = found.find(i => i.id === c.foundItemId);
+    const lostReporter  = l ? users.find(u => u.id === l.userId) : null;
+    const foundReporter = f ? users.find(u => u.id === f.userId) : null;
+    const lostContact   = getVisibleContact(l, lostReporter);
+    const foundContact  = getVisibleContact(f, foundReporter);
+    const isLostReporter = l?.userId === currentUser.id;
+    const isFoundReporter = f?.userId === currentUser.id;
+    const canApproveAsLost = status === 'pending_user' && isLostReporter && !c.lostReporterApproved;
+    const canApproveAsFound = status === 'pending_user' && isFoundReporter && !c.foundReporterApproved;
+    const roleLabel = c.claimantId === currentUser.id
+      ? 'You: Claimant'
+      : isLostReporter
+        ? 'You: Lost Reporter'
+        : isFoundReporter
+          ? 'You: Found Reporter'
+          : '';
+    const contactCell = (status === 'approved' || status === 'closed')
+      ? `<div style="display:grid;gap:4px;font-size:12px;color:var(--gray2);">
+           <div><strong>Lost:</strong> ${escapeHtml(lostContact)}</div>
+           <div><strong>Found:</strong> ${escapeHtml(foundContact)}</div>
+         </div>`
+      : `<span style="font-size:12px;color:var(--gray3);">Available after approval</span>`;
+    const actionCell = (status === 'approved' || status === 'closed')
+      ? `<button class="btn btn-sm btn-outline" onclick="openClaimDetails('${c.id}')">Open</button>`
+      : canApproveAsLost && canApproveAsFound
+        ? `<div class="action-btns">
+             <button class="btn btn-sm btn-success" onclick="userApproveClaim('${c.id}','lost')">Approve Lost Side</button>
+             <button class="btn btn-sm btn-success" onclick="userApproveClaim('${c.id}','found')">Approve Found Side</button>
+             <button class="btn btn-sm btn-danger" onclick="userRejectClaim('${c.id}','lost')">Reject</button>
+           </div>`
+        : canApproveAsLost
+        ? `<div class="action-btns">
+             <button class="btn btn-sm btn-success" onclick="userApproveClaim('${c.id}','lost')">Approve</button>
+             <button class="btn btn-sm btn-danger" onclick="userRejectClaim('${c.id}','lost')">Reject</button>
+           </div>`
+        : canApproveAsFound
+          ? `<div class="action-btns">
+               <button class="btn btn-sm btn-success" onclick="userApproveClaim('${c.id}','found')">Approve</button>
+               <button class="btn btn-sm btn-danger" onclick="userRejectClaim('${c.id}','found')">Reject</button>
+             </div>`
+          : `<span style="font-size:12px;color:var(--gray3);">${status === 'pending_admin' ? 'Waiting for admin' : 'Waiting for user approval'}</span>`;
+    return `
+      <tr>
+        <td><strong>${l?.name || '-'}</strong></td>
+        <td>${f?.name || '-'}</td>
+        <td>${fmtDate(c.date)}</td>
+        <td><span class="status status-${status}">${getClaimStatusLabel(status)}</span></td>
+        <td>${contactCell}</td>
+        <td style="font-size:12px;color:var(--gray3);">${roleLabel ? roleLabel + ' · ' : ''}${c.notes}</td>
+        <td>${actionCell}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function userApproveClaim(claimId, role) {
+  const claims = DB.get('claims');
+  const claim = claims.find(c => c.id === claimId);
+  if (!claim) return;
+
+  const lostItem = DB.get('lost_items').find(i => i.id === claim.lostItemId);
+  const foundItem = DB.get('found_items').find(i => i.id === claim.foundItemId);
+
+  const status = normalizeClaimStatus(claim);
+  if (status !== 'pending_user') return;
+
+  if (role === 'lost' && lostItem?.userId !== currentUser?.id) return;
+  if (role === 'found' && foundItem?.userId !== currentUser?.id) return;
+
+  if (role === 'lost') claim.lostReporterApproved = true;
+  if (role === 'found') claim.foundReporterApproved = true;
+
+  if (claim.lostReporterApproved && claim.foundReporterApproved) {
+    claim.status = 'pending_admin';
+    claim.notes = 'User-side approval complete. Awaiting admin verification';
+    toast('User approval complete. Sent for admin verification.', 'success');
+  } else {
+    claim.status = 'pending_user';
+    claim.notes = 'Partially approved by user. Waiting for second user approval';
+    toast('Approval recorded. Waiting for another user approval.', 'success');
+  }
+
+  DB.set('claims', claims);
+  syncClaimItemStatuses(claim.lostItemId, claim.foundItemId);
+  renderMyClaims();
+  updateBadges();
+  refreshDashboard();
+}
+
+function userRejectClaim(claimId, role) {
+  const claims = DB.get('claims');
+  const claim = claims.find(c => c.id === claimId);
+  if (!claim) return;
+
+  const lostItem = DB.get('lost_items').find(i => i.id === claim.lostItemId);
+  const foundItem = DB.get('found_items').find(i => i.id === claim.foundItemId);
+
+  const status = normalizeClaimStatus(claim);
+  if (status !== 'pending_user' && status !== 'pending_admin') return;
+
+  if (role === 'lost' && lostItem?.userId !== currentUser?.id) return;
+  if (role === 'found' && foundItem?.userId !== currentUser?.id) return;
+
+  claim.status = 'rejected';
+  claim.notes = role === 'lost' ? 'Rejected by lost reporter' : role === 'found' ? 'Rejected by found reporter' : 'Rejected by user';
+  DB.set('claims', claims);
+  syncClaimItemStatuses(claim.lostItemId, claim.foundItemId);
+  toast('Claim rejected by user', 'error');
+  renderMyClaims();
+  updateBadges();
+  refreshDashboard();
+}
+
+function openClaimDetails(claimId) {
+  const claims = DB.get('claims');
+  const claim = claims.find(c => c.id === claimId);
+  if (!claim || !currentUser) return;
+
+  claim.status = normalizeClaimStatus(claim);
+
+  const lostItems = DB.get('lost_items');
+  const foundItems = DB.get('found_items');
+  const users = DB.get('users');
+  const lostItem = lostItems.find(i => i.id === claim.lostItemId);
+  const foundItem = foundItems.find(i => i.id === claim.foundItemId);
+  const isRelated = claim.claimantId === currentUser.id
+    || lostItem?.userId === currentUser.id
+    || foundItem?.userId === currentUser.id;
+  if (!isRelated) return;
+
+  const lostReporter = lostItem ? users.find(u => u.id === lostItem.userId) : null;
+  const foundReporter = foundItem ? users.find(u => u.id === foundItem.userId) : null;
+
+  const isApproved = claim.status === 'approved' || claim.status === 'closed';
+  const isClosed = claim.status === 'closed';
+  const lostContact = getVisibleContact(lostItem, lostReporter);
+  const foundContact = getVisibleContact(foundItem, foundReporter);
+  let messages = Array.isArray(claim.messages) ? claim.messages : [];
+  let seenUpdated = false;
+  if (isApproved) {
+    messages = messages.map(m => {
+      if (m.senderId !== currentUser.id && !m.seen) {
+        seenUpdated = true;
+        return { ...m, seen: true };
+      }
+      return m;
+    });
+    if (seenUpdated) {
+      claim.messages = messages;
+      DB.set('claims', claims);
+    }
+  }
+
+  document.getElementById('claim-title').textContent = `Claim: ${lostItem?.name || '-'} ↔ ${foundItem?.name || '-'}`;
+  document.getElementById('claim-body').innerHTML = `
+    <div class="claim-meta-grid">
+      <div class="claim-section">
+        <div class="claim-section-title">Contact Exchange</div>
+        ${isApproved ? `
+          <div class="claim-contact-card">
+            <div class="claim-contact-title">Lost Reporter</div>
+            <div class="claim-contact-value">${lostReporter?.name || 'Unknown'}</div>
+            <div class="claim-contact-meta">${escapeHtml(lostContact)}</div>
+          </div>
+          <div class="claim-contact-card">
+            <div class="claim-contact-title">Found Reporter</div>
+            <div class="claim-contact-value">${foundReporter?.name || 'Unknown'}</div>
+            <div class="claim-contact-meta">${escapeHtml(foundContact)}</div>
+          </div>
+        ` : `<div class="claim-muted">Contact details unlock after approval.</div>`}
+      </div>
+      <div class="claim-section">
+        <div class="claim-section-title">Pickup / Handover</div>
+        ${isApproved ? `
+          <div class="form-group">
+            <label>Pickup Location</label>
+            <input type="text" id="pickup-location" value="${escapeHtml(claim.pickupLocation || '')}" placeholder="e.g. Security Office, Block C">
+          </div>
+          <div class="form-group">
+            <label>Pickup Time</label>
+            <input type="text" id="pickup-time" value="${escapeHtml(claim.pickupTime || '')}" placeholder="e.g. 5:30 PM, 19 Apr">
+          </div>
+          <div class="form-group">
+            <label>Notes</label>
+            <textarea id="pickup-notes" placeholder="Any instructions or confirmations">${escapeHtml(claim.pickupNotes || '')}</textarea>
+          </div>
+          <div class="claim-actions">
+            <button class="btn btn-sm btn-primary" onclick="savePickupDetails('${claim.id}')">Save Details</button>
+            ${isClosed ? '' : `<button class="btn btn-sm btn-success" onclick="markClaimCompleted('${claim.id}')">Mark Completed</button>`}
+          </div>
+        ` : `<div class="claim-muted">Pickup details unlock after approval.</div>`}
+      </div>
+    </div>
+
+    <div class="claim-section claim-chat">
+      <div class="claim-section-title">Chat</div>
+      ${isApproved ? `
+        <div class="claim-chat-list">
+          ${renderClaimMessages(messages)}
+        </div>
+        ${isClosed
+          ? `<div class="claim-muted">Chat is locked after completion.</div>`
+          : `<div class="claim-chat-input">
+               <input type="text" id="claim-chat-input-${claim.id}" placeholder="Type a message..." onkeydown="handleClaimChatKey(event,'${claim.id}')">
+               <button class="btn btn-sm btn-primary" onclick="sendClaimMessage('${claim.id}')">Send</button>
+             </div>`}
+        ${isClosed ? '' : `<div class="claim-chat-actions">
+          <button class="btn btn-sm btn-outline" onclick="clearClaimChat('${claim.id}')">Clear Chat</button>
+        </div>`}
+      ` : `<div class="claim-muted">Chat unlocks after approval.</div>`}
+    </div>
+  `;
+  document.getElementById('claim-modal').classList.add('show');
+}
+
+function savePickupDetails(claimId) {
+  const claims = DB.get('claims');
+  const claim = claims.find(c => c.id === claimId);
+  if (!claim) return;
+
+  claim.pickupLocation = document.getElementById('pickup-location')?.value.trim() || '';
+  claim.pickupTime = document.getElementById('pickup-time')?.value.trim() || '';
+  claim.pickupNotes = document.getElementById('pickup-notes')?.value.trim() || '';
+  DB.set('claims', claims);
+  toast('Pickup details saved', 'success');
+  renderMyClaims();
+}
+
+function handleClaimChatKey(event, claimId) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    sendClaimMessage(claimId);
+  }
+}
+
+function sendClaimMessage(claimId) {
+  const input = document.getElementById(`claim-chat-input-${claimId}`);
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+
+  const claims = DB.get('claims');
+  const claim = claims.find(c => c.id === claimId);
+  if (!claim) return;
+
+  if (!Array.isArray(claim.messages)) claim.messages = [];
+  claim.messages.push({ id: genId(), senderId: currentUser.id, text, time: new Date().toISOString(), seen: false });
+  DB.set('claims', claims);
+  input.value = '';
+  openClaimDetails(claimId);
+}
+
+function clearClaimChat(claimId) {
+  const claims = DB.get('claims');
+  const claim = claims.find(c => c.id === claimId);
+  if (!claim) return;
+  claim.messages = [];
+  DB.set('claims', claims);
+  openClaimDetails(claimId);
+}
+
+function markClaimCompleted(claimId) {
+  const claims = DB.get('claims');
+  const claim = claims.find(c => c.id === claimId);
+  if (!claim) return;
+  claim.status = 'closed';
+  claim.notes = claim.notes ? `${claim.notes} · Completed by users` : 'Completed by users';
+  DB.set('claims', claims);
+  toast('Claim marked as completed', 'success');
+  closeModal('claim-modal');
+  updateBadges();
+  renderMyClaims();
+}
+
+function renderClaimMessages(messages) {
+  if (!messages.length) {
+    return '<div class="claim-muted">No messages yet.</div>';
+  }
+  return messages.map(m => {
+    const mine = m.senderId === currentUser?.id;
+    const tick = mine
+      ? `<span class="claim-tick ${m.seen ? 'seen' : 'sent'}">${m.seen ? '✓✓' : '✓'}</span>`
+      : '';
+    return `
+      <div class="claim-message ${mine ? 'mine' : ''}">
+        <div class="claim-message-text">${escapeHtml(m.text)}</div>
+        <div class="claim-message-meta">
+          <span>${fmtDateTime(m.time)}</span>
+          ${tick}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function fmtDateTime(value) {
+  if (!value) return '-';
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return value;
+  return dt.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// ═══════════════════════════════════════════════
+//  ITEM DETAIL MODAL
+// ═══════════════════════════════════════════════
+function openItemModal(id, type) {
+  const items    = type === 'lost' ? DB.get('lost_items') : DB.get('found_items');
+  const item     = items.find(i => i.id === id);
+  if (!item) return;
+  const users    = DB.get('users');
+  const reporter = users.find(u => u.id === item.userId);
+
+  document.getElementById('modal-title').textContent = item.name;
+  document.getElementById('modal-body').innerHTML = `
+    ${item.image
+      ? `<img src="${item.image}" class="item-modal-image" alt="${item.name}">`
+      : `<div class="item-modal-placeholder">${getCatEmoji(item.category)}</div>`
+    }
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+      <div style="background:var(--gray1);padding:12px;border-radius:10px;">
+        <div style="font-size:11px;color:var(--gray3);font-weight:700;text-transform:uppercase;margin-bottom:4px;">Type</div>
+        <span class="status status-${type === 'lost' ? 'lost' : 'open'}">${type === 'lost' ? '🔴 Lost' : '🟢 Found'}</span>
+      </div>
+      <div style="background:var(--gray1);padding:12px;border-radius:10px;">
+        <div style="font-size:11px;color:var(--gray3);font-weight:700;text-transform:uppercase;margin-bottom:4px;">Category</div>
+        <span class="cat-tag">${getCatEmoji(item.category)} ${capitalize(item.category || 'other')}</span>
+      </div>
+      <div style="background:var(--gray1);padding:12px;border-radius:10px;">
+        <div style="font-size:11px;color:var(--gray3);font-weight:700;text-transform:uppercase;margin-bottom:4px;">${type === 'lost' ? 'Date Lost' : 'Date Found'}</div>
+        <div style="font-size:14px;font-weight:600;">${fmtDate(item.date || item.foundDate)}</div>
+      </div>
+      <div style="background:var(--gray1);padding:12px;border-radius:10px;">
+        <div style="font-size:11px;color:var(--gray3);font-weight:700;text-transform:uppercase;margin-bottom:4px;">Status</div>
+        <span class="status status-${item.status === 'open' ? (type === 'lost' ? 'lost' : 'open') : item.status}">${item.status}</span>
+      </div>
+    </div>
+    <div class="item-modal-panel">
+      <div class="item-modal-label">📍 Location</div>
+      <div class="item-modal-text">${item.location || '-'}</div>
+    </div>
+    ${item.desc ? `
+      <div class="item-modal-panel">
+        <div class="item-modal-label">📝 Description</div>
+        <div class="item-modal-text item-modal-muted">${item.desc}</div>
+      </div>` : ''}
+    ${type === 'found' && item.storage ? `
+      <div class="item-modal-panel">
+        <div class="item-modal-label">📦 Storage Location</div>
+        <div class="item-modal-text item-modal-accent">${item.storage}</div>
+      </div>` : ''}
+    <div class="item-modal-panel">
+      <div class="item-modal-label">👤 Reported By</div>
+      <div class="item-modal-reporter-row">
+        <div class="avatar" style="width:28px;height:28px;font-size:12px;">${(reporter?.name || '?')[0]}</div>
+        <span class="item-modal-text">${reporter?.name || 'Unknown'}</span>
+      </div>
+      ${item.contactHidden ? '<div style="font-size:12px;color:var(--gray3);margin-top:6px;">Contact number hidden by reporter</div>' : ''}
+    </div>
+    ${type === 'found' && currentUser && currentUser.role !== 'admin' && item.userId !== currentUser.id && item.status === 'open'
+      ? `<button class="btn btn-primary btn-full" onclick="closeModal('item-modal');showClaimPrompt('${item.id}')">🏷️ Claim This Item</button>`
+      : ''}
+  `;
+  document.getElementById('item-modal').classList.add('show');
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('show');
+}
+
+// ═══════════════════════════════════════════════
+//  BADGES
+// ═══════════════════════════════════════════════
+
+function getNotificationIcon(notification) {
+  const type = String(notification?.type || '').toLowerCase();
+
+  if (type.includes('match')) return '🤖';
+  if (type.includes('return') || type.includes('resolved')) return '📦';
+  if (type.includes('claim') && type.includes('approved')) return '✅';
+  if (type.includes('claim') && type.includes('rejected')) return '❌';
+  if (type.includes('created')) return '📋';
+
+  return '🔔';
+}
+
+function getNotificationTitle(notification) {
+  const type = String(notification?.type || '').toLowerCase();
+
+  if (type === 'match_found') return notification.read ? 'Match Alert' : 'New Match Alert';
+  if (type.includes('claim') && type.includes('approved')) return 'Claim Approved';
+  if (type.includes('claim') && type.includes('rejected')) return 'Claim Update';
+  if (type.includes('return') || type.includes('resolved')) return 'Item Returned';
+  if (type.includes('created')) return 'Report Submitted';
+
+  return notification?.title || 'Notification';
+}
+
+function initNotificationUI() {
+  // The notification markup is part of index.html. Initialize it whenever the
+  // DOM is ready and again after authentication changes currentUser.
+  const wrap = document.getElementById('notification-wrap');
+  const bell = document.getElementById('notification-bell');
+  const panel = document.getElementById('notification-panel');
+  if (!wrap || !bell || !panel) return;
+
+  // Keep the wrapper in the topbar and make the bell visible for students.
+  if (!currentUser || currentUser.role !== 'admin') {
+    wrap.style.display = 'flex';
+  }
+
+  renderNotificationBell();
+}
+
+function renderNotificationBell() {
+  const bell = document.getElementById('notification-bell');
+  const countEl = document.getElementById('notification-count');
+
+  if (!bell || !countEl) return;
+
+  const wrap = document.getElementById('notification-wrap');
+
+  if (!currentUser || currentUser.role === 'admin') {
+    bell.style.display = 'none';
+    if (wrap) wrap.style.display = 'none';
+    return;
+  }
+
+  if (wrap) wrap.style.display = 'flex';
+  bell.style.display = 'flex';
+
+  const notifications = getCurrentUserNotifications();
+  const unread = notifications.filter(n => !n.read).length;
+
+  countEl.textContent = unread > 99 ? '99+' : String(unread);
+  countEl.classList.toggle('hidden', unread === 0);
+  bell.classList.toggle('has-unread', unread > 0);
+}
+
+function renderNotificationPanel() {
+  const list = document.getElementById('notification-panel-list');
+  if (!list || !currentUser || currentUser.role === 'admin') return;
+
+  const notifications = getCurrentUserNotifications();
+
+  if (!notifications.length) {
+    list.innerHTML = `
+      <div class="notification-empty">
+        <div class="notification-empty-icon">🔔</div>
+        <div>No notifications yet.</div>
+        <small>You'll be notified when something important happens.</small>
+      </div>
+    `;
+    renderNotificationBell();
+    return;
+  }
+
+  list.innerHTML = notifications.slice(0, 12).map(n => {
+    const id = escapeHtml(String(n.id || ''));
+    const message = escapeHtml(
+      n.message || n.body || 'You have a new TraceMate notification.'
+    );
+    const title = escapeHtml(getNotificationTitle(n));
+    const icon = getNotificationIcon(n);
+    const score = Number(n.score ?? n.matchScore);
+    const type = String(n.type || '').toLowerCase();
+    const isMatch = type === 'match_found' || type.includes('match');
+    const isReturn =
+      type.includes('return') ||
+      type.includes('resolved') ||
+      type === 'item_returned';
+
+    const foundId = escapeHtml(String(n.foundItemId || ''));
+
+    return `
+      <div class="notification-card ${n.read ? '' : 'unread'}"
+           data-notification-id="${id}">
+        <div class="notification-card-icon">${icon}</div>
+
+        <div class="notification-card-content">
+          <div class="notification-card-top">
+            <strong>${title}</strong>
+            <span>${escapeHtml(fmtDateTime(n.time || n.date))}</span>
+          </div>
+
+          <div class="notification-card-message">${message}</div>
+
+          ${
+            Number.isFinite(score) && score > 0
+              ? `<div class="notification-score">🤖 ${score}% match confidence</div>`
+              : ''
+          }
+
+          <div class="notification-card-actions">
+            ${
+              isMatch && foundId
+                ? `<button class="btn btn-sm btn-primary"
+                    onclick="openNotificationMatch('${id}', '${foundId}')">
+                    Review Match
+                  </button>`
+                : ''
+            }
+
+            ${
+              isReturn
+                ? `<button class="btn btn-sm btn-primary"
+                    onclick="openReturnedNotification('${id}')">
+                    View My Reports
+                  </button>`
+                : ''
+            }
+
+            ${
+              n.read
+                ? ''
+                : `<button class="btn btn-sm btn-outline"
+                    onclick="markNotificationRead('${id}')">
+                    Mark Read
+                  </button>`
+            }
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  renderNotificationBell();
+}
+
+function toggleNotificationPanel(event) {
+  if (event) event.stopPropagation();
+  const panel = document.getElementById('notification-panel');
+  if (!panel || !currentUser || currentUser.role === 'admin') return;
+
+  renderNotificationPanel();
+  const willOpen = !panel.classList.contains('open');
+
+  document.querySelectorAll('.notification-panel.open')
+    .forEach(p => p.classList.remove('open'));
+
+  panel.classList.toggle('open', willOpen);
+
+  if (willOpen) {
+    renderNotificationPanel();
+  }
+}
+
+function openReturnedNotification(notificationId) {
+  markNotificationRead(notificationId);
+
+  const panel = document.getElementById('notification-panel');
+  if (panel) panel.classList.remove('open');
+
+  showPage('my-reports');
+}
+
+function updateBadges() {
+  if (!currentUser) return;
+  const notifications = getCurrentUserNotifications().filter(n => !n.read);
+  const notifBadge = document.getElementById('notif-badge');
+  if (notifBadge) {
+    notifBadge.textContent = notifications.length;
+    notifBadge.classList.toggle('hidden', notifications.length === 0 || currentUser.role === 'admin');
+  }
+
+  const myClaims = DB.get('claims').filter(c => c.claimantId === currentUser.id && isClaimPending(c.status));
+  const badge    = document.getElementById('claims-badge');
+  badge.textContent = myClaims.length;
+  badge.classList.toggle('hidden', myClaims.length === 0);
+
+  if (currentUser.role === 'admin') {
+    const pending = DB.get('claims').filter(c => normalizeClaimStatus(c) === 'pending_admin').length;
+    const ab = document.getElementById('admin-badge');
+    ab.textContent = pending;
+    ab.classList.toggle('hidden', pending === 0);
+  }
+}
+
+function markNotificationRead(notificationId) {
+  if (!currentUser) return;
+  const users = DB.get('users');
+  const me = users.find(u => u.id === currentUser.id);
+  if (!me || !Array.isArray(me.notifications)) return;
+
+  const target = me.notifications.find(n => n.id === notificationId);
+  if (!target || target.read) return;
+  target.read = true;
+
+  DB.set('users', users);
+  currentUser = me;
+  updateBadges();
+  renderNotifications();
+  renderNotificationBell();
+  if (document.getElementById('notification-panel')?.classList.contains('open')) {
+    renderNotificationPanel();
+  }
+}
+
+function markAllNotificationsRead() {
+  if (!currentUser) return;
+  const users = DB.get('users');
+  const me = users.find(u => u.id === currentUser.id);
+  if (!me || !Array.isArray(me.notifications)) return;
+
+  let changed = false;
+  me.notifications.forEach(n => {
+    if (!n.read) {
+      n.read = true;
+      changed = true;
+    }
+  });
+  if (!changed) return;
+
+  DB.set('users', users);
+  currentUser = me;
+  updateBadges();
+  renderNotifications();
+  renderNotificationBell();
+  if (document.getElementById('notification-panel')?.classList.contains('open')) {
+    renderNotificationPanel();
+  }
+}
+
+function openNotificationMatch(notificationId, foundItemId) {
+  markNotificationRead(notificationId);
+
+  const panel = document.getElementById('notification-panel');
+  if (panel) panel.classList.remove('open');
+
+  if (foundItemId) {
+    showClaimPrompt(foundItemId);
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  UTILITIES
+// ═══════════════════════════════════════════════
+function getCatEmoji(cat) {
+  const map = { electronics: '📱', documents: '📄', accessories: '👜', clothing: '👗', keys: '🔑', books: '📚', other: '📦' };
+  return map[cat] || '📦';
+}
+function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+
+function toast(msg, type = '') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  const icons = { success: '✅', error: '❌', info: '💡', '': '📢' };
+  el.innerHTML = `${icons[type] || '📢'} ${msg}`;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+
+
+// Close the notification panel when clicking outside it.
+(function TraceMateNotificationOutsideClick() {
+  if (window.__traceMateNotificationOutsideClick) return;
+  window.__traceMateNotificationOutsideClick = true;
+
+  document.addEventListener('click', function(event) {
+    const wrap = document.getElementById('notification-wrap');
+    const panel = document.getElementById('notification-panel');
+
+    if (!wrap || !panel || !panel.classList.contains('open')) return;
+
+    if (!wrap.contains(event.target)) {
+      panel.classList.remove('open');
+    }
+  });
+})();
+
+
+// Notification UI safety initialization. This covers direct page loads,
+// login transitions, and browsers serving a cached version of the app.
+function scheduleNotificationUIInit() {
+  initNotificationUI();
+  setTimeout(initNotificationUI, 250);
+  setTimeout(initNotificationUI, 1000);
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', scheduleNotificationUIInit);
