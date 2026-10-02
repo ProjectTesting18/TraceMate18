@@ -208,6 +208,13 @@
 .ai-match-factor strong{color:#102033;font-size:11px}
 .ai-match-method{margin-top:8px;font-size:10px;color:#8793a3}
 @media(max-width:600px){.ai-match-grid{grid-template-columns:1fr}}
+
+/* AI LOST REPORT ASSISTANT */
+.ai-report-launch{position:relative;overflow:hidden;display:flex;align-items:center;gap:14px;padding:16px 18px;margin:0 0 20px;border:1px solid #dbe5f0;border-radius:16px;background:linear-gradient(135deg,#f7fbff,#eef6ff);box-shadow:0 8px 24px rgba(20,45,80,.06)}
+.ai-report-launch .ai-report-icon{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:24px;background:#fff;box-shadow:0 4px 12px rgba(20,45,80,.08);flex-shrink:0}
+.ai-report-launch h3{margin:0 0 3px;font-size:15px;color:#102033}.ai-report-launch p{margin:0;color:#6b7b8f;font-size:12px;line-height:1.5}.ai-report-launch .btn{margin-left:auto;white-space:nowrap}
+.ai-report-modal{position:fixed;inset:0;background:rgba(7,18,31,.58);z-index:10000;display:none;align-items:center;justify-content:center;padding:18px}.ai-report-modal.open{display:flex}.ai-report-box{width:min(680px,100%);max-height:min(820px,94vh);background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 25px 80px rgba(0,0,0,.25);display:flex;flex-direction:column}.ai-report-head{padding:16px 18px;border-bottom:1px solid #e8edf3;display:flex;align-items:center;gap:12px}.ai-report-head-icon{width:40px;height:40px;border-radius:12px;background:#eef6ff;display:flex;align-items:center;justify-content:center;font-size:21px}.ai-report-head-title{flex:1}.ai-report-head-title strong{display:block;color:#102033;font-size:15px}.ai-report-head-title span{font-size:11px;color:#8290a1}.ai-report-close{border:0;background:#f2f5f8;width:34px;height:34px;border-radius:10px;cursor:pointer;font-size:18px;color:#526174}
+.ai-report-chat{padding:18px;overflow:auto;display:flex;flex-direction:column;gap:12px;min-height:300px;background:#f8fafc}.ai-msg{max-width:88%;padding:11px 13px;border-radius:14px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word}.ai-msg.bot{align-self:flex-start;background:#fff;border:1px solid #e5ebf2;color:#26384d;border-bottom-left-radius:5px}.ai-msg.user{align-self:flex-end;background:#102033;color:#fff;border-bottom-right-radius:5px}.ai-report-preview{background:#fff;border:1px solid #dce5ee;border-radius:14px;padding:14px}.ai-report-preview h4{margin:0 0 10px;color:#102033}.ai-report-preview-row{display:flex;gap:12px;padding:7px 0;border-bottom:1px solid #eef1f5;font-size:12px}.ai-report-preview-row:last-child{border-bottom:0}.ai-report-preview-row b{width:105px;color:#718095}.ai-report-preview-row span{flex:1;color:#1d2c3e}.ai-report-image{max-width:130px;max-height:100px;border-radius:9px;object-fit:cover;border:1px solid #e1e7ee}.ai-report-input-wrap{padding:12px;border-top:1px solid #e8edf3;background:#fff}.ai-report-input-row{display:flex;gap:8px;align-items:center}.ai-report-input{flex:1;border:1px solid #d8e0e9;border-radius:12px;padding:11px 12px;font-size:13px;outline:none}.ai-report-input:focus{border-color:#6d91b8;box-shadow:0 0 0 3px rgba(109,145,184,.12)}.ai-report-upload{width:42px;height:42px;border:1px solid #d8e0e9;border-radius:12px;background:#f8fafc;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px}.ai-report-upload input{display:none}.ai-report-hint{font-size:10px;color:#8995a5;margin-top:7px;padding-left:2px}.ai-report-actions{display:flex;gap:8px;margin-top:10px}.ai-report-actions .btn{flex:1}.ai-report-progress{font-size:11px;color:#718095;text-align:center;padding:5px}.ai-report-preview-img-wrap{margin-top:8px}.ai-report-typing{opacity:.7;font-style:italic}@media(max-width:600px){.ai-report-launch{align-items:flex-start}.ai-report-launch .btn{margin-left:0;margin-top:10px}.ai-report-launch{flex-wrap:wrap}.ai-report-launch>div:nth-child(2){flex:1;min-width:200px}.ai-report-box{max-height:96vh}.ai-report-chat{min-height:280px;padding:12px}.ai-msg{max-width:94%}}
 </style>
 
 </head>
@@ -927,6 +934,13 @@
 
         </div>
 
+      </div>
+
+
+      <div class="ai-report-launch" id="ai-report-launch">
+        <div class="ai-report-icon">🤖</div>
+        <div><h3>Report a Lost Item with AI</h3><p>Tell TraceMate what happened in a conversation. AI will collect the details, accept a photo, and prepare the report for you.</p></div>
+        <button type="button" class="btn btn-primary" onclick="openAILostReport()">🤖 Start AI Report</button>
       </div>
 
 
@@ -2729,6 +2743,17 @@
 <!-- =========================================================
      JAVASCRIPT FILES
 ========================================================= -->
+
+<!-- =========================================================
+     AI LOST REPORT ASSISTANT
+========================================================= -->
+<div id="ai-lost-report-modal" class="ai-report-modal" aria-hidden="true">
+  <div class="ai-report-box" role="dialog" aria-modal="true" aria-labelledby="ai-report-title">
+    <div class="ai-report-head"><div class="ai-report-head-icon">🤖</div><div class="ai-report-head-title"><strong id="ai-report-title">TraceMate AI Report Assistant</strong><span>I'll help you create your lost-item report.</span></div><button type="button" class="ai-report-close" onclick="closeAILostReport()" aria-label="Close">×</button></div>
+    <div id="ai-report-chat" class="ai-report-chat"></div>
+    <div class="ai-report-input-wrap"><div id="ai-report-progress" class="ai-report-progress"></div><div class="ai-report-input-row"><label class="ai-report-upload" title="Upload item photo">📷<input id="ai-report-photo" type="file" accept="image/*" onchange="handleAILostPhoto(this)"></label><input id="ai-report-input" class="ai-report-input" type="text" placeholder="Type your answer..." autocomplete="off"><button id="ai-report-send" type="button" class="btn btn-primary" onclick="sendAILostMessage()">Send</button></div><div class="ai-report-hint">You can describe multiple details in one message. Photo is optional.</div><div id="ai-report-actions" class="ai-report-actions" style="display:none;"></div></div>
+  </div>
+</div>
 
 <script src="js/db.js?v=20260921fix9"></script>
 <script src="js/auth.js?v=20260924deleteprofile"></script>
