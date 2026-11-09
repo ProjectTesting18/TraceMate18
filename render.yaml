@@ -33,11 +33,10 @@ services:
     name: tracemate-ai
     runtime: python
     plan: 2c-8g
-    region: oregon
+    region: singapore
     rootDir: ai-service
     buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /health
     healthCheckPath: /health
     disk:
       name: tracemate-ai-model-cache
