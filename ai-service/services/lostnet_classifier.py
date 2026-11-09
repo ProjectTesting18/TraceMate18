@@ -1,5 +1,7 @@
 from pathlib import Path
-from threading import Lock
+from threading import Lock, Thread
+import os
+from io import BytesIO
 
 import torch
 from PIL import Image
@@ -8,7 +10,6 @@ from torchvision import transforms
 from data.lostnet.mobilenet import MobileNetV2
 
 ROOT = Path(__file__).resolve().parent
-import os
 
 MODEL_PATH = Path(
     os.getenv(
@@ -36,14 +37,18 @@ _TRANSFORM = transforms.Compose([
 ])
 
 _MODEL = None
-_LOCK = Lock()
+_MODEL_LOCK = Lock()
+_STATE_LOCK = Lock()
+_LOADING = False
+_LOAD_ATTEMPTED = False
+_LOAD_ERROR = None
 
 
 def _get_model():
     global _MODEL
 
     if _MODEL is None:
-        with _LOCK:
+        with _MODEL_LOCK:
             if _MODEL is None:
                 if not MODEL_PATH.is_file():
                     raise FileNotFoundError(
@@ -71,8 +76,6 @@ def classify_image(image_bytes: bytes) -> dict:
     if not image_bytes:
         raise ValueError("Image data is empty.")
 
-    from io import BytesIO
-
     with Image.open(BytesIO(image_bytes)) as source:
         image = source.convert("RGB")
 
@@ -88,9 +91,7 @@ def classify_image(image_bytes: bytes) -> dict:
         "model": "LostNet-MobileNetV2-CBAM",
         "predicted_class": CLASSES[index],
         "confidence": round(float(probabilities[index].item()), 6),
-        "confidence_percent": round(
-            float(probabilities[index].item()) * 100, 2
-        ),
+        "confidence_percent": round(float(probabilities[index].item()) * 100, 2),
         "classes": [
             {
                 "label": CLASSES[i],
@@ -99,3 +100,46 @@ def classify_image(image_bytes: bytes) -> dict:
             for i in torch.argsort(probabilities, descending=True).tolist()
         ],
     }
+
+
+def _warmup_worker():
+    global _LOADING, _LOAD_ATTEMPTED, _LOAD_ERROR
+    try:
+        _get_model()
+        error = None
+    except Exception as exc:
+        error = str(exc)
+    finally:
+        with _STATE_LOCK:
+            _LOAD_ERROR = error
+            _LOAD_ATTEMPTED = True
+            _LOADING = False
+
+
+def start_lostnet_warmup() -> None:
+    """Load the trained LostNet checkpoint automatically after API startup."""
+    global _LOADING
+
+    with _STATE_LOCK:
+        if _MODEL is not None or _LOAD_ATTEMPTED or _LOADING:
+            return
+        _LOADING = True
+        worker = Thread(
+            target=_warmup_worker,
+            name="tracemate-lostnet-loader",
+            daemon=True,
+        )
+        worker.start()
+
+
+def get_lostnet_status() -> dict:
+    with _STATE_LOCK:
+        return {
+            "model": "LostNet-MobileNetV2-CBAM",
+            "checkpoint": MODEL_PATH.name,
+            "checkpoint_exists": MODEL_PATH.is_file(),
+            "available": _MODEL is not None,
+            "loading": _LOADING,
+            "initialized": _LOAD_ATTEMPTED,
+            "error": _LOAD_ERROR,
+        }

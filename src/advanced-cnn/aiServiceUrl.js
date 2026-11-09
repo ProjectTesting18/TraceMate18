@@ -7,46 +7,72 @@ const DEFAULT_AI_SERVICE_URLS = [
   'http://localhost:8000'
 ];
 
-let cachedUrl = null;
+const CACHE_TTL_MS = 15000;
+let cached = null;
 let resolving = null;
 
-/**
- * Resolve the running TraceMate AI service instead of blindly trusting a stale
- * AI_SERVICE_URL (for example, an .env value pointing at unused port 8000).
- * The URL is cached only after /health succeeds.
- */
+function normalizeBaseUrl(value) {
+  let raw = String(value || '').trim();
+  while (raw.endsWith('/')) raw = raw.slice(0, -1);
+  if (!raw) return '';
+  return raw.includes('://') ? raw : 'http://' + raw;
+}
+
+async function checkHealth(baseUrl, timeoutMs = 4000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(baseUrl + '/health', {
+      method: 'GET',
+      signal: controller.signal
+    });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function resolveAIServiceUrl() {
-  if (cachedUrl) return cachedUrl;
+  const configured = normalizeBaseUrl(process.env.AI_SERVICE_URL);
+  const isProduction = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+
+  if (
+    cached &&
+    cached.configured === configured &&
+    Date.now() - cached.checkedAt < CACHE_TTL_MS
+  ) {
+    return cached.url;
+  }
   if (resolving) return resolving;
 
   resolving = (async () => {
-    const configured = String(process.env.AI_SERVICE_URL || '').trim()
-      .replace(/\/+$/, '');
-    const candidates = [...new Set([
-      ...(configured ? [configured] : []),
-      ...DEFAULT_AI_SERVICE_URLS
-    ])];
+    const candidates = [
+      ...new Set([
+        ...(configured ? [configured] : []),
+        ...(!isProduction ? DEFAULT_AI_SERVICE_URLS : [])
+      ])
+    ];
 
     for (const baseUrl of candidates) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 2500);
-      try {
-        const response = await fetch(`${baseUrl}/health`, {
-          method: 'GET',
-          signal: controller.signal
-        });
-        if (response.ok) {
-          cachedUrl = baseUrl;
-          return cachedUrl;
-        }
-      } catch {
-        // Try the next configured/default local endpoint.
-      } finally {
-        clearTimeout(timer);
+      if (await checkHealth(baseUrl)) {
+        cached = {
+          url: baseUrl,
+          configured,
+          checkedAt: Date.now()
+        };
+        return baseUrl;
       }
     }
 
-    // Do not cache failure; a later request can succeed after Python starts.
+    cached = null;
+    if (isProduction) {
+      throw new Error(
+        'Configured TraceMate AI service is unavailable. Check AI_SERVICE_URL and the Python service deployment.'
+      );
+    }
+
     return configured || 'http://127.0.0.1:8001';
   })();
 

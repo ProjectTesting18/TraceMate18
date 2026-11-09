@@ -1,0 +1,61 @@
+# TraceMate production deployment on Render.
+# Both services must use paid plans: the AI service needs private networking,
+# model memory, and persistent model cache; the Node service needs durable JSON data.
+services:
+  - type: web
+    name: tracemate-web
+    runtime: node
+    plan: 1c-2g
+    region: singapore
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    disk:
+      name: tracemate-app-data
+      mountPath: /var/data
+      sizeGB: 10
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRACEMATE_DATA_DIR
+        value: /var/data
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: AI_SERVICE_URL
+        fromService:
+          type: pserv
+          name: tracemate-ai
+          property: hostport
+
+  - type: pserv
+    name: tracemate-ai
+    runtime: python
+    plan: 2c-8g
+    region: singapore
+    rootDir: ai-service
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+
+    disk:
+      name: tracemate-ai-model-cache
+      mountPath: /var/data
+      sizeGB: 20
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: HF_HOME
+        value: /var/data/huggingface
+      - key: TRANSFORMERS_CACHE
+        value: /var/data/huggingface
+      - key: SENTENCE_TRANSFORMERS_HOME
+        value: /var/data/sentence-transformers
+      - key: TORCH_HOME
+        value: /var/data/torch
+      - key: TOKENIZERS_PARALLELISM
+        value: "false"
+      - key: WEB_CONCURRENCY
+        value: "1"
+      - key: OMP_NUM_THREADS
+        value: "2"

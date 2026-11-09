@@ -1,5 +1,4 @@
-const AI_SERVICE_URL =
-  process.env.AI_SERVICE_URL || 'http://127.0.0.1:8001';
+const { resolveAIServiceUrl } = require('./aiServiceUrl');
 
 async function requestTextSimilarity(
   text1,
@@ -10,8 +9,9 @@ async function requestTextSimilarity(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    const baseUrl = await resolveAIServiceUrl();
     const response = await fetch(
-      `${AI_SERVICE_URL}/nlp/text-similarity`,
+      `${baseUrl}/nlp/text-similarity`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

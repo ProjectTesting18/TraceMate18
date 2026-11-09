@@ -7,7 +7,7 @@ const { prepareReportsWithHistory } = require('./src/reportHistory');
 require('dotenv').config();
 
 const PORT = process.env.PORT || 5000;
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://127.0.0.1:8001';
+const { resolveAIServiceUrl } = require('./src/advanced-cnn/aiServiceUrl');
 
 async function fetchAiHealth(url, timeoutMs = 3000) {
   const controller = new AbortController();
@@ -92,6 +92,15 @@ function validateRuntimeConfig() {
     errors.push(
       'ADMIN_PASSWORD is missing or too short (min 8 chars)'
     );
+  }
+
+  if (String(process.env.NODE_ENV || '').toLowerCase() === 'production') {
+    if (ADMIN_PASSWORD === 'Admin@123') {
+      errors.push('Set a unique ADMIN_PASSWORD in the production environment; the development default is forbidden');
+    }
+    if (!String(process.env.AI_SERVICE_URL || '').trim()) {
+      errors.push('AI_SERVICE_URL is required in production');
+    }
   }
 
   const parsedPort = Number(PORT);
@@ -3519,11 +3528,12 @@ async function handleApi(
     url.pathname === '/api/nlp/health'
   ) {
     try {
-      const { status, data } = await fetchAiHealth(`${AI_SERVICE_URL}/health`);
+      const aiBaseUrl = await resolveAIServiceUrl();
+      const { status, data } = await fetchAiHealth(`${aiBaseUrl}/health`);
 
       return sendJson(res, status, {
         ...data,
-        nlpEndpoint: `${AI_SERVICE_URL}/nlp/text-similarity`
+        nlpEndpoint: `${aiBaseUrl}/nlp/text-similarity`
       });
     } catch (err) {
       return sendJson(res, 503, {
@@ -3546,7 +3556,8 @@ async function handleApi(
 
     try {
 
-      const { status, data } = await fetchAiHealth(`${AI_SERVICE_URL}/health`);
+      const aiBaseUrl = await resolveAIServiceUrl();
+      const { status, data } = await fetchAiHealth(`${aiBaseUrl}/health`);
 
       return sendJson(
         res,
@@ -4589,7 +4600,7 @@ async function startServer() {
       );
 
       console.log(
-        `CNN service: ${AI_SERVICE_URL}`
+        'CNN service: configured through AI_SERVICE_URL'
       );
     }
   );

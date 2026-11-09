@@ -1,4 +1,6 @@
-# Optional visual-model support. Install only when wheels match your Python/OS.
-torch>=2.5.0
-torchvision>=0.20.0
+# CPU-only PyTorch wheels for Render's CPU-based Python service.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+torch==2.5.1+cpu
+torchvision==0.20.1+cpu
 transformers>=4.45.0,<5.0.0
