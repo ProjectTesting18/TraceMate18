@@ -35,6 +35,7 @@ async def lifespan(app: FastAPI):
     start_nlp_model_warmup()
     start_visual_model_warmup()
     start_lostnet_warmup()
+    start_lostnet_warmup()
     yield
 
 
