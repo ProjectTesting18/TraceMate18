@@ -94,6 +94,15 @@ function validateRuntimeConfig() {
     );
   }
 
+  if (String(process.env.NODE_ENV || '').toLowerCase() === 'production') {
+    if (ADMIN_PASSWORD === 'Admin@123') {
+      errors.push('Set a unique ADMIN_PASSWORD in the production environment; the development default is forbidden');
+    }
+    if (!String(process.env.AI_SERVICE_URL || '').trim()) {
+      errors.push('AI_SERVICE_URL is required in production');
+    }
+  }
+
   const parsedPort = Number(PORT);
 
   if (
