@@ -1,0 +1,17 @@
+TraceMate color-conflict fix
+Date: 2026-10-31
+
+Changed:
+- src/advanced-cnn/matchingServiceCompat.js
+  Foreground image color labels now normalize common shade modifiers (light, very light, pale, medium, dark, deep) before comparing base color families. This prevents 'light gray' vs 'gray' from being treated as a confirmed color contradiction solely due to a shade descriptor.
+- tests/visual-color-conflict-score-cap.test.js
+  Added a regression test ensuring light gray vs gray does not trigger the visual color conflict or the 62% color-conflict cap when report colors agree.
+
+Validation:
+- node --check src/advanced-cnn/matchingServiceCompat.js: PASS
+- node --test tests/visual-color-conflict-score-cap.test.js: 5/5 PASS
+- npm test: 108/108 PASS
+
+Safety:
+- Distinct base colors such as black vs white remain conflicts when the evidence is sufficiently confident.
+- Physical receipt/admin confirmation workflow remains unchanged.

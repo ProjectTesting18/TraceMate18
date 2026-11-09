@@ -1,12 +1,12 @@
-// ═══════════════════════════════════════════════
+// ───────────────────────────────────────────────
 //  app.js – Navigation, Dashboard, Browse,
 //           Report Lost/Found, Matching, Claims
 //  TraceMate – Smart Lost & Found Campus App
-// ═══════════════════════════════════════════════
+// ───────────────────────────────────────────────
 
-// ═══════════════════════════════════════════════
+// ───────────────────────────────────────────────
 //  NAVIGATION
-// ═══════════════════════════════════════════════
+// ───────────────────────────────────────────────
 const pageTitles = {
   'dashboard':    'Dashboard',
   'browse':       'Browse Items',
@@ -43,12 +43,11 @@ function refreshAll() {
   renderBrowse();
   updateBadges();
   renderNotificationBell();
-  initNotificationUI();
 }
 
-// ═══════════════════════════════════════════════
+// ───────────────────────────────────────────────
 //  DASHBOARD
-// ═══════════════════════════════════════════════
+// ───────────────────────────────────────────────
 function refreshDashboard() {
   const lost     = DB.get('lost_items');
   const found    = DB.get('found_items');
@@ -113,7 +112,7 @@ function renderNotifications() {
         </div>
         <div class="notify-message">${message}</div>
         <div class="notify-actions">
-          ${n.foundItemId ? `<button class="btn btn-sm btn-primary" onclick="openNotificationMatch('${n.id}', '${n.foundItemId}')">Review Match</button>` : ''}
+          ${n.foundItemId ? `<button class="btn btn-sm btn-primary" onclick="openNotificationMatch('${n.id}', '${n.foundItemId}', '${n.lostItemId || ''}')">Review Match</button>` : ''}
           ${n.read ? '' : `<button class="btn btn-sm btn-outline" onclick="markNotificationRead('${n.id}')">Mark Read</button>`}
         </div>
       </div>
@@ -131,7 +130,7 @@ function renderRecentList(elId, items, type) {
     <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--gray2);cursor:pointer;"
          onclick="openItemModal('${item.id}','${type}')">
       <div style="width:40px;height:40px;background:var(--gray1);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">
-        ${getCatEmoji(item.category)}
+        ${getCatEmoji(item.category, item.name)}
       </div>
       <div style="flex:1;overflow:hidden;">
         <div style="font-size:14px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.name}</div>
@@ -142,300 +141,144 @@ function renderRecentList(elId, items, type) {
   `).join('');
 }
 
-function renderUserMatches() {
-  const lost  = DB.get('lost_items').filter(i => i.userId === currentUser.id && i.status === 'open');
-  const found = DB.get('found_items').filter(i => i.status === 'open');
-  const allMatches = [];
-  lost.forEach(l => {
-    found.forEach(f => {
+async function requestTraceMateAI(path, options = {}) {
+  const token = getAuthToken();
 
-      // Do not even calculate a candidate score when
-      // both object families are known and incompatible.
-      const lostObjectFamily =
-        getLocalObjectFamily(l);
+  if (!token) {
+    throw new Error('Please sign in to use AI matching');
+  }
 
-      const foundObjectFamily =
-        getLocalObjectFamily(f);
+  const headers = {
+    ...(options.headers || {}),
+    Authorization: `Bearer ${token}`
+  };
 
-      if (
-        lostObjectFamily &&
-        foundObjectFamily &&
-        lostObjectFamily !== foundObjectFamily
-      ) {
-        return;
-      }
+  if (options.body && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
 
-      const score = matchScore(l, f);
-
-      if (score >= 40) {
-        allMatches.push({
-          lost: l,
-          found: f,
-          score
-        });
-      }
-    });
+  const response = await fetch(apiUrl(path), {
+    ...options,
+    headers
   });
-  allMatches.sort((a, b) => b.score - a.score);
 
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(
+      data.error || data.message || `AI request failed (${response.status})`
+    );
+  }
+
+  return data;
+}
+
+let studentAIMatchRequestId = 0;
+
+async function renderUserMatches() {
+  const requestId = ++studentAIMatchRequestId;
   const section = document.getElementById('matches-section');
-  const list    = document.getElementById('matches-list');
-  if (!allMatches.length) { section.style.display = 'none'; return; }
+  const list = document.getElementById('matches-list');
+
+  if (!section || !list || !currentUser) return;
+
+  let allMatches = [];
+
+  try {
+    const response = await requestTraceMateAI('/api/ai/student-matches');
+    if (requestId !== studentAIMatchRequestId) return;
+
+    allMatches = (Array.isArray(response.matches) ? response.matches : [])
+      .map(match => ({
+        lost: match.lostItem,
+        found: match.foundItem,
+        score: Number(match.score || 0)
+      }))
+      .filter(match =>
+        match.lost &&
+        match.found &&
+        match.score >= 40 &&
+        match.lost.userId === currentUser.id &&
+        String(match.lost.status || 'open').toLowerCase() === 'open' &&
+        ['open', 'received_by_admin'].includes(String(match.found.status || 'open').trim().toLowerCase())
+      )
+      .filter(match => {
+        const lostFamily = getLocalObjectFamily(match.lost);
+        const foundFamily = getLocalObjectFamily(match.found);
+        return !lostFamily || !foundFamily || lostFamily === foundFamily;
+      });
+  } catch (error) {
+    console.warn('AI dashboard matching failed; using local fallback:', error);
+
+    const lost = DB.get('lost_items').filter(i =>
+      i.userId === currentUser.id &&
+      String(i.status || 'open').toLowerCase() === 'open'
+    );
+    const found = DB.get('found_items').filter(i =>
+      ['open', 'received_by_admin'].includes(String(i.status || 'open').trim().toLowerCase())
+    );
+
+    allMatches = [];
+    lost.forEach(l => {
+      found.forEach(f => {
+        const lostFamily = getLocalObjectFamily(l);
+        const foundFamily = getLocalObjectFamily(f);
+        if (lostFamily && foundFamily && lostFamily !== foundFamily) return;
+
+        const score = matchScore(l, f);
+        if (score >= 40) allMatches.push({ lost: l, found: f, score });
+      });
+    });
+  }
+
+  if (requestId !== studentAIMatchRequestId) return;
+
+  allMatches.sort((a, b) => b.score - a.score);
+  if (!allMatches.length) {
+    section.style.display = 'none';
+    list.innerHTML = '';
+    return;
+  }
+
   section.style.display = 'block';
   list.innerHTML = allMatches.slice(0, 3).map(m => `
     <div class="match-card">
-      <div class="match-score">${m.score}%</div>
+      <div class="match-score">${Math.round(m.score)}%</div>
       <div class="match-info">
         <div class="match-title">Your lost "${m.lost.name}" may match found item: "${m.found.name}"</div>
-        <div class="match-meta">📍 Found at: ${m.found.location} · ${fmtDate(m.found.foundDate)}</div>
+        <div class="match-meta">📍 Found at: ${m.found.location || 'Location not specified'} · ${fmtDate(m.found.foundDate)}</div>
       </div>
-      <button class="btn btn-sm btn-primary" onclick="initiateClaim('${m.lost.id}','${m.found.id}',${m.score})">Claim →</button>
+      <button class="btn btn-sm btn-primary" onclick="initiateClaim('${m.lost.id}','${m.found.id}',${Math.round(m.score)})">Claim →</button>
     </div>
   `).join('');
 }
 
-// ═══════════════════════════════════════════════
-//  AUTO-MATCHING ALGORITHM
-// ═══════════════════════════════════════════════
-
-/**
- * Detect a broad object family for local dashboard matching.
- *
- * IMPORTANT:
- * - Only rejects a comparison when BOTH items have a
- *   recognizable family and those families are different.
- * - Unknown/unrecognized items remain eligible.
- */
 function getLocalObjectFamily(item = {}) {
-
   const source = [
-    item.name,
-    item.itemName,
-    item.title,
-    item.desc,
-    item.description,
-    item.category,
-    item.objectType,
-    item.object_type,
-    item.visualRecognition?.objectType,
-    item.visualRecognition?.object_type,
-    ...(Array.isArray(item.detectedLabels)
-      ? item.detectedLabels
-      : [])
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase()
-    .replace(/[-_]/g, " ");
+    item.name, item.itemName, item.title, item.desc, item.description,
+    item.category, item.objectType, item.object_type,
+    item.visualRecognition?.objectType, item.visualRecognition?.object_type,
+    ...(Array.isArray(item.detectedLabels) ? item.detectedLabels : [])
+  ].filter(Boolean).join(' ').toLowerCase().replace(/[-_]/g, ' ');
 
-  if (/\b(wristwatch|wrist watch|smartwatch|smart watch|watch)\b/i.test(source)) {
-    return "watch";
-  }
-
-  if (/\b(water bottle|bottle|flask|thermos|sipper)\b/i.test(source)) {
-    return "bottle";
-  }
-
-  if (/\b(wallet|cardholder|card holder)\b/i.test(source)) {
-    return "wallet";
-  }
-
-  if (/\b(backpack|back pack|schoolbag|school bag|rucksack|handbag|purse|bag)\b/i.test(source)) {
-    return "bag";
-  }
-
-  if (/\b(phone|mobile|cellphone|cell phone|smartphone|smart phone)\b/i.test(source)) {
-    return "phone";
-  }
-
-  if (/\b(laptop|notebook computer|notebook)\b/i.test(source)) {
-    return "laptop";
-  }
-
-  if (/\b(tablet|ipad)\b/i.test(source)) {
-    return "tablet";
-  }
-
-  if (/\b(headphones|headphone|earbuds|earbud|earphones|earphone)\b/i.test(source)) {
-    return "headphone";
-  }
-
-  if (/\b(keys|keychain|key chain|key)\b/i.test(source)) {
-    return "key";
-  }
-
-  if (/\b(glasses|spectacles|eyeglasses|sunglasses)\b/i.test(source)) {
-    return "glasses";
-  }
-
-  if (/\b(shoe|shoes|sneaker|sneakers|footwear)\b/i.test(source)) {
-    return "shoe";
-  }
-
+  if (/\b(wristwatch|wrist watch|smartwatch|smart watch|watch)\b/i.test(source)) return 'watch';
+  if (/\b(water bottle|bottle|flask|thermos|sipper)\b/i.test(source)) return 'bottle';
+  if (/\b(wallet|cardholder|card holder)\b/i.test(source)) return 'wallet';
+  if (/\b(backpack|back pack|schoolbag|school bag|rucksack|handbag|purse|bag)\b/i.test(source)) return 'bag';
+  if (/\b(phone|mobile|cellphone|cell phone|smartphone|smart phone)\b/i.test(source)) return 'phone';
+  if (/\b(laptop|notebook computer|macbook|chromebook)\b/i.test(source)) return 'laptop';
+  if (/\b(notebook|exercise book|spiral notebook|ruled notebook)\b/i.test(source)) return 'notebook';
+  if (/\b(tablet|ipad)\b/i.test(source)) return 'tablet';
+  if (/\b(headphones|headphone|earbuds|earbud|earphones|earphone)\b/i.test(source)) return 'headphone';
+  if (/\b(pendrive|pen drive|usb drive|flash drive|thumb drive|memory stick)\b/i.test(source)) return 'pendrive';
+  if (/\b(charger|charging adapter|power adapter|usb adapter)\b/i.test(source)) return 'charger';
+  if (/\b(keys|keychain|key chain|key)\b/i.test(source)) return 'key';
+  if (/\b(glasses|spectacles|eyeglasses|sunglasses)\b/i.test(source)) return 'glasses';
+  if (/\b(shoe|shoes|sneaker|sneakers|footwear)\b/i.test(source)) return 'shoe';
+  if (/\b(motorcycle helmet|bike helmet|helmet)\b/i.test(source)) return 'helmet';
+  if (/\b(mouse|computer mouse|wireless mouse)\b/i.test(source)) return 'mouse';
+  if (/\b(cleaning brush|hair brush|toothbrush|brush)\b/i.test(source)) return 'brush';
   return null;
-}
-
-// ═══════════════════════════════════════════════
-//  AI HYBRID MATCHING (CNN/CLIP + NLP + RULES)
-// ═══════════════════════════════════════════════
-const AI_CV_URL = 'http://127.0.0.1:8001';
-const aiMatchCache = new Map();
-
-function aiCacheKey(lostItem, foundItem) {
-  return `${lostItem?.id || 'lost'}::${foundItem?.id || 'found'}`;
-}
-
-function normalizePercent(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : null;
-}
-
-function localTextSimilarity(text1, text2) {
-  const a = String(text1 || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 2);
-  const b = String(text2 || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 2);
-  if (!a.length || !b.length) return 0;
-  const sa = new Set(a), sb = new Set(b);
-  let common = 0;
-  sa.forEach(w => { if (sb.has(w)) common += 1; });
-  return Math.round((common / Math.max(sa.size, sb.size)) * 100);
-}
-
-function structuredMatchBreakdown(lostItem, foundItem) {
-  const category = String(lostItem?.category || '').toLowerCase() === String(foundItem?.category || '').toLowerCase() && lostItem?.category ? 100 : 0;
-  const name = localTextSimilarity(lostItem?.name, foundItem?.name);
-  const description = localTextSimilarity(lostItem?.desc, foundItem?.desc);
-  const location = localTextSimilarity(lostItem?.location, foundItem?.location);
-  const ld = new Date(lostItem?.date || 0).getTime();
-  const fd = new Date(foundItem?.foundDate || 0).getTime();
-  const days = Number.isFinite(ld) && Number.isFinite(fd) ? Math.abs(fd - ld) / 86400000 : Infinity;
-  const date = days <= 1 ? 100 : days <= 3 ? 70 : days <= 7 ? 35 : 0;
-  const base = matchScore(lostItem, foundItem);
-  return { category, name, description, location, date, base };
-}
-
-async function requestAIImageSimilarity(lostItem, foundItem) {
-  if (!lostItem?.image || !foundItem?.image) return null;
-  try {
-    const form = new FormData();
-    const toBlob = async (dataUrl, name) => {
-      const response = await fetch(dataUrl);
-      const blob = await response.blob();
-      return new File([blob], name, { type: blob.type || 'image/jpeg' });
-    };
-    form.append('image1', await toBlob(lostItem.image, 'lost-item.jpg'));
-    form.append('image2', await toBlob(foundItem.image, 'found-item.jpg'));
-    const response = await fetch(`${AI_CV_URL}/cv/image-similarity`, { method: 'POST', body: form });
-    if (!response.ok) return null;
-    const result = await response.json();
-    return {
-      score: normalizePercent(result.hybrid_similarity_percentage ?? result.similarity_percentage),
-      mobileNet: normalizePercent(result.mobilenet_similarity_percentage),
-      clip: normalizePercent(result.clip_similarity_percentage),
-      models: result.hybrid_models_used || result.visual_models || [],
-      method: result.hybrid_method || result.method || 'CNN image similarity',
-      recognition: result.visual_recognition || null,
-    };
-  } catch (err) {
-    console.warn('TraceMate image AI unavailable:', err.message);
-    return null;
-  }
-}
-
-async function requestAINLPSimilarity(lostItem, foundItem) {
-  const text1 = [lostItem?.name, lostItem?.desc].filter(Boolean).join('. ').trim();
-  const text2 = [foundItem?.name, foundItem?.desc].filter(Boolean).join('. ').trim();
-  if (!text1 || !text2) return null;
-  try {
-    const response = await fetch('/api/ai/text-similarity', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text1, text2 })
-    });
-    if (!response.ok) return null;
-    const result = await response.json();
-    return normalizePercent(
-      result.similarity_percentage ?? result.similarity ?? result.score ?? result.confidence
-    );
-  } catch (err) {
-    console.warn('TraceMate NLP AI unavailable:', err.message);
-    return null;
-  }
-}
-
-async function getHybridMatchAnalysis(lostItem, foundItem) {
-  const key = aiCacheKey(lostItem, foundItem);
-  if (aiMatchCache.has(key)) return aiMatchCache.get(key);
-
-  const structured = structuredMatchBreakdown(lostItem, foundItem);
-  const [imageAI, nlpAI] = await Promise.all([
-    requestAIImageSimilarity(lostItem, foundItem),
-    requestAINLPSimilarity(lostItem, foundItem)
-  ]);
-
-  const imageScore = imageAI?.score;
-  const textScore = nlpAI ?? Math.round((structured.name * 0.45) + (structured.description * 0.55));
-
-  // When both AI modalities are available, use them as the primary evidence.
-  // Rule-based signals remain contextual confirmation and never get ignored.
-  let finalScore;
-  if (imageScore !== null && textScore !== null) {
-    finalScore = Math.round(
-      imageScore * 0.35 +
-      textScore * 0.25 +
-      structured.category * 0.15 +
-      Math.max(structured.location, structured.date) * 0.10 +
-      structured.name * 0.05 +
-      structured.description * 0.05 +
-      structured.date * 0.05
-    );
-  } else {
-    // Safe fallback when the AI services are offline.
-    finalScore = structured.base;
-  }
-
-  const analysis = {
-    score: Math.max(0, Math.min(100, finalScore)),
-    imageScore,
-    nlpScore: nlpAI,
-    categoryScore: structured.category,
-    nameScore: structured.name,
-    descriptionScore: structured.description,
-    locationScore: structured.location,
-    dateScore: structured.date,
-    imageAI,
-    aiAvailable: imageScore !== null || nlpAI !== null,
-    fallback: !(imageScore !== null && nlpAI !== null),
-    method: imageAI?.method || (nlpAI !== null ? 'NLP + rule-based hybrid matching' : 'Rule-based matching')
-  };
-
-  aiMatchCache.set(key, analysis);
-  return analysis;
-}
-
-function renderAIMatchBreakdown(analysis) {
-  if (!analysis) return '';
-  const rows = [
-    ['🖼️ CNN/CLIP Image', analysis.imageScore],
-    ['📝 NLP Description', analysis.nlpScore],
-    ['📦 Category', analysis.categoryScore],
-    ['🏷️ Name', analysis.nameScore],
-    ['📍 Location', analysis.locationScore],
-    ['📅 Date', analysis.dateScore]
-  ];
-  return `
-    <div class="ai-match-breakdown">
-      <div class="ai-match-breakdown-title">🤖 Explainable AI Match</div>
-      <div class="ai-match-grid">
-        ${rows.map(([label, value]) => `
-          <div class="ai-match-factor">
-            <span>${label}</span>
-            <strong>${value === null || value === undefined ? '—' : `${Math.round(value)}%`}</strong>
-          </div>
-        `).join('')}
-      </div>
-      <div class="ai-match-method">${escapeHtml(analysis.method || 'Hybrid matching')}</div>
-    </div>
-  `;
 }
 
 function matchScore(lostItem, foundItem) {
@@ -488,9 +331,9 @@ function matchScore(lostItem, foundItem) {
   return Math.min(100, score);
 }
 
-// ═══════════════════════════════════════════════
+// ───────────────────────────────────────────────
 //  BROWSE
-// ═══════════════════════════════════════════════
+// ───────────────────────────────────────────────
 let browseFilter = 'all';
 
 function setFilter(f, el) {
@@ -537,7 +380,7 @@ function renderBrowse(searchQuery = '') {
   grid.innerHTML = items.map(item => `
     <div class="item-card" onclick="openItemModal('${item.id}','${item.type}')">
       <div class="item-card-img">
-        ${item.image ? `<img src="${item.image}" alt="">` : getCatEmoji(item.category)}
+        ${item.image ? `<img src="${item.image}" alt="">` : getCatEmoji(item.category, item.name)}
         <span class="item-type-badge badge-${item.type}">${item.type === 'lost' ? '🔴 Lost' : '🟢 Found'}</span>
       </div>
       <div class="item-card-body">
@@ -569,26 +412,859 @@ function globalSearch(val) {
 }
 
 
-// ═══════════════════════════════════════════════
+// ───────────────────────────────────────────────
 //  AI LOST REPORT ASSISTANT
-// ═══════════════════════════════════════════════
+// ───────────────────────────────────────────────
 let aiLostReportState = null;
-function aiToday(offset=0){const d=new Date();d.setDate(d.getDate()+offset);return d.toISOString().slice(0,10)}
-function aiCategory(t){t=String(t).toLowerCase();if(/phone|mobile|laptop|tablet|charger|earbud|headphone|watch|camera|usb|pendrive/.test(t))return'electronics';if(/aadhaar|aadhar|pan card|id card|license|passport|document|certificate/.test(t))return'documents';if(/wallet|purse|belt|ring|bracelet|necklace|bag|handbag|jewell/.test(t))return'accessories';if(/shirt|tshirt|jacket|hoodie|coat|jeans|pant|shoe|dress|cap/.test(t))return'clothing';if(/key|keychain/.test(t))return'keys';if(/book|notebook|novel|textbook/.test(t))return'books';return'other'}
-function aiDate(t){t=String(t).toLowerCase();if(/day before yesterday/.test(t))return aiToday(-2);if(/yesterday/.test(t))return aiToday(-1);if(/today|this morning|this afternoon|tonight/.test(t))return aiToday();let m=t.match(/\b(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})\b/);if(m){let y=+m[3];if(y<100)y+=2000;return y+'-'+String(+m[2]).padStart(2,'0')+'-'+String(+m[1]).padStart(2,'0')}return''}
-function aiLocation(t){let m=String(t).match(/\b(?:at|near|inside|outside|in|from)\s+(?:the\s+)?([^,.!?]+?)(?=\s+(?:today|yesterday|on|around|at)\b|[,.!?]|$)/i);return m?m[1].trim():''}
-function aiItem(t){let m=String(t).match(/(?:i\s+)?lost\s+(?:my\s+)?(.+?)(?=\s+(?:at|near|in|inside|outside|yesterday|today|on)\b|[,.!?]|$)/i);if(m)return m[1].trim();return String(t).trim()}
-function aiAdd(who,text){const c=document.getElementById('ai-report-chat');if(!c)return;const d=document.createElement('div');d.className='ai-msg '+who;d.textContent=text;c.appendChild(d);c.scrollTop=c.scrollHeight}
-function openAILostReport(){if(!currentUser||currentUser.role==='admin'){toast('Please sign in as a student to use the AI report assistant','error');return}aiLostReportState={item:'',category:'',date:'',location:'',desc:'',image:'',step:'item',busy:false};const m=document.getElementById('ai-lost-report-modal'),c=document.getElementById('ai-report-chat'),i=document.getElementById('ai-report-input'),a=document.getElementById('ai-report-actions');if(!m)return;m.classList.add('open');m.setAttribute('aria-hidden','false');c.innerHTML='';a.style.display='none';a.innerHTML='';i.disabled=false;document.getElementById('ai-report-send').disabled=false;aiAdd('bot','Hi! 👋 I can create your lost-item report. Tell me what you lost. You can give several details at once, for example: “I lost my black wallet in the library yesterday.”');i.value='';i.focus()}
-function closeAILostReport(){const m=document.getElementById('ai-lost-report-modal');if(m){m.classList.remove('open');m.setAttribute('aria-hidden','true')}aiLostReportState=null}
-function handleAILostPhoto(inp){const f=inp.files&&inp.files[0];if(!f||!aiLostReportState)return;if(!f.type.startsWith('image/'))return toast('Please select an image file','error');if(f.size>5*1024*1024)return toast('Please use an image smaller than 5 MB','error');const r=new FileReader();r.onload=e=>{aiLostReportState.image=e.target.result;aiAdd('user','📷 Photo uploaded');aiAdd('bot','Got it. I attached the photo to your report.')};r.readAsDataURL(f);inp.value=''}
-function sendAILostMessage(){if(!aiLostReportState||aiLostReportState.busy)return;const i=document.getElementById('ai-report-input'),t=i.value.trim();if(!t)return;aiAdd('user',t);i.value='';const s=aiLostReportState;if(!s.item)s.item=aiItem(t);if(!s.category)s.category=aiCategory(s.item+' '+t);const d=aiDate(t),l=aiLocation(t);if(d)s.date=d;if(l)s.location=l;if(!s.location){s.step='location';return aiAdd('bot','Where did you last see it? For example: library, canteen, classroom 204, or main gate.')}if(!s.date){s.step='date';return aiAdd('bot','When did you last see it? Say “today”, “yesterday”, or give a date such as 01/10/2026.')}if(!s.desc&&!/^(skip|none|no|nothing)$/i.test(t)){s.desc=t;s.step='description';aiAdd('bot','Got it. Do you have any other identifying details? You can type “skip” if there are none.');return}showAILostPreview()}
-function showAILostPreview(){const s=aiLostReportState,a=document.getElementById('ai-report-actions'),i=document.getElementById('ai-report-input');aiAdd('bot','Please check your report below. If everything is correct, submit it.');const c=document.getElementById('ai-report-chat'),d=document.createElement('div');d.className='ai-msg bot';d.innerHTML='<div class="ai-report-preview"><h4>📋 Lost Item Report</h4><div class="ai-report-preview-row"><b>Item</b><span>'+escapeHtml(s.item)+'</span></div><div class="ai-report-preview-row"><b>Category</b><span>'+escapeHtml(s.category)+'</span></div><div class="ai-report-preview-row"><b>Date</b><span>'+escapeHtml(s.date)+'</span></div><div class="ai-report-preview-row"><b>Location</b><span>'+escapeHtml(s.location)+'</span></div><div class="ai-report-preview-row"><b>Details</b><span>'+escapeHtml(s.desc||'None')+'</span></div><div class="ai-report-preview-row"><b>Photo</b><span>'+(s.image?'Attached':'Not attached')+'</span></div></div>';c.appendChild(d);a.innerHTML='<button type="button" class="btn btn-outline" onclick="editAILostReport()">✏️ Edit</button><button type="button" class="btn btn-primary" onclick="submitAILostReportFromAI()">✅ Submit Lost Report</button>';a.style.display='flex';i.disabled=true;document.getElementById('ai-report-send').disabled=true}
-function editAILostReport(){const s=aiLostReportState;if(!s)return;s.step='edit';const a=document.getElementById('ai-report-actions'),i=document.getElementById('ai-report-input');a.style.display='none';a.innerHTML='';i.disabled=false;document.getElementById('ai-report-send').disabled=false;i.focus();aiAdd('bot','Tell me what to change, for example “blue wallet” or “location is Block B library”.')}
-async function submitAILostReportFromAI(){const s=aiLostReportState;if(!s||s.busy)return;s.busy=true;try{const u=await ensureCurrentUser();if(!u)throw new Error('Please sign in again.');const item={id:genId(),userId:u.id,name:s.item.trim(),category:s.category||'other',date:s.date||aiToday(),location:s.location.trim(),desc:s.desc.trim(),contact:'',contactHidden:false,image:s.image||'',status:'open',created:typeof today==='function'?today():new Date().toISOString()};const items=DB.get('lost_items');items.push(item);DB.set('lost_items',items);toast('AI lost report submitted successfully! 🤖📋','success');aiAdd('bot','✅ Your lost-item report has been submitted. I’ll now check TraceMate’s existing matching system.');try{await runAutoMatch(item,'lost')}catch(e){console.warn(e)}updateBadges();refreshDashboard();renderBrowse();if(typeof renderMyReports==='function')renderMyReports();const a=document.getElementById('ai-report-actions');a.innerHTML='<button type="button" class="btn btn-primary" onclick="closeAILostReport();showPage(\'my-reports\')">View My Reports →</button>'}catch(e){toast(e.message||'Could not save report','error');aiAdd('bot','I could not save the report. Your normal Report Lost form is still available.')}finally{s.busy=false}}
-// ═══════════════════════════════════════════════
+// AI launcher for found-item reports.
+
+
+function aiToday(offset = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return d.toISOString().slice(0, 10);
+}
+
+function aiNormalizeText(value) {
+  let text = String(value || '').trim().replace(/\s+/g, ' ');
+
+  const corrections = [
+    [/\byesterdaay\b/gi, 'yesterday'],
+    [/\byesterdya\b/gi, 'yesterday'],
+    [/\byestereday\b/gi, 'yesterday'],
+    [/\btommorow\b/gi, 'tomorrow'],
+    [/\btomorow\b/gi, 'tomorrow'],
+    [/\bnaear\b/gi, 'near'],
+    [/\bneear\b/gi, 'near'],
+    [/\bclssroom\b/gi, 'classroom'],
+    [/\bclasroom\b/gi, 'classroom'],
+    [/\bclassrom\b/gi, 'classroom'],
+    [/\bpen\s+drive\b/gi, 'pendrive'],
+    [/\busb\s+flash\s+drive\b/gi, 'USB flash drive'],
+    [/\busb\s+drive\b/gi, 'USB drive']
+  ];
+
+  for (const [pattern, replacement] of corrections) {
+    text = text.replace(pattern, replacement);
+  }
+
+  return text;
+}
+
+function aiCategory(text) {
+  const t = String(text || '').toLowerCase();
+  if (/\b(phone|mobile|cellphone|smartphone|laptop|tablet|charger|earbud|earbuds|headphone|headphones|earphone|watch|smartwatch|camera|usb|pendrive|power bank|powerbank)\b/.test(t)) return 'electronics';
+  if (/\b(aadhaar|aadhar|pan card|id card|license|passport|document|certificate|mark sheet|marksheet)\b/.test(t)) return 'documents';
+  if (/\b(wallet|purse|belt|ring|bracelet|necklace|bag|backpack|handbag|jewell)\b/.test(t)) return 'accessories';
+  if (/\b(key|keys|keychain|key chain)\b/.test(t)) return 'keys';
+  if (/\b(shirt|tshirt|t-shirt|jacket|hoodie|coat|jeans|pant|trouser|shoe|shoes|dress|cap|clothes)\b/.test(t)) return 'clothing';
+  if (/\b(book|notebook|novel|textbook|journal)\b/.test(t)) return 'books';
+  return 'other';
+}
+
+function aiDate(text) {
+  const t = String(text || '').toLowerCase().trim();
+  if (/\bday before yesterday\b/.test(t)) return aiToday(-2);
+  if (/\byesterday\b/.test(t)) return aiToday(-1);
+  if (/\b(today|this morning|this afternoon|tonight)\b/.test(t)) return aiToday();
+
+  const ago = t.match(/\b(\d+)\s+days?\s+ago\b/);
+  if (ago) return aiToday(-Number(ago[1]));
+
+  const dmy = t.match(/\b(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})\b/);
+  if (dmy) {
+    let y = Number(dmy[3]);
+    if (y < 100) y += 2000;
+    return `${y}-${String(Number(dmy[2])).padStart(2,'0')}-${String(Number(dmy[1])).padStart(2,'0')}`;
+  }
+
+  const ymd = t.match(/\b(20\d{2})[\/-](\d{1,2})[\/-](\d{1,2})\b/);
+  if (ymd) return `${ymd[1]}-${String(Number(ymd[2])).padStart(2,'0')}-${String(Number(ymd[3])).padStart(2,'0')}`;
+
+  // Natural-language weekday references such as "last Monday" or "on Friday".
+  const weekday = t.match(/\b(?:last\s+|on\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/);
+  if (weekday) {
+    const names = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+    const target = names.indexOf(weekday[1]);
+    const now = new Date();
+    const todayDay = now.getDay();
+    let delta = (todayDay - target + 7) % 7;
+    if (/\blast\s+/i.test(weekday[0]) || delta === 0) delta += 7;
+    return aiToday(-delta);
+  }
+
+  return '';
+}
+
+function aiLooksLikeDate(text) {
+  const t = String(text || '').trim();
+  return /^(today|yesterday|day before yesterday|this morning|this afternoon|tonight)$/i.test(t)
+    || /\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/.test(t)
+    || /\b20\d{2}[\/-]\d{1,2}[\/-]\d{1,2}\b/.test(t);
+}
+
+function aiLooksLikeLocation(text) {
+  const t = aiNormalizeText(text);
+  if (!t) return false;
+
+  if (/^(skip|none|no|not sure|unknown|don't know|dont know)$/i.test(t)) {
+    return true;
+  }
+
+  return /\b(library|canteen|classroom|networking\s+lab|computer\s+lab|laboratory|lab|parking|gate|office|security|corridor|floor|block|building|hostel|auditorium|playground|gym|washroom|cafeteria|department)\b/i.test(t);
+}
+function aiLocation(text) {
+  const source = aiNormalizeText(text);
+  if (!source) return '';
+
+  const direct = source.match(
+    /^(?:the\s+)?(library|canteen|cafeteria|classroom(?:\s+[a-z0-9-]+)?|networking\s+lab|computer\s+lab|laboratory|lab|parking|main gate|gate|office|security|corridor|floor(?:\s+[a-z0-9-]+)?|block\s+[a-z0-9-]+|building|hostel|auditorium|playground|gym|washroom|department)$/i
+  );
+  if (direct && direct[1]) return aiNormalizeText(direct[1]);
+
+  const campus = source.match(
+    /\b(?:at|near|inside|outside|in|from)\s+(?:the\s+)?(networking\s+lab|computer\s+lab|main gate|block\s+[a-z0-9-]+|classroom(?:\s+[a-z0-9-]+)?|library|canteen|cafeteria|laboratory|lab|parking|gate|office|security|corridor|floor|building|hostel|auditorium|playground|gym|washroom|department)\b/i
+  );
+  if (campus && campus[1]) return aiNormalizeText(campus[1]);
+
+  const m = source.match(
+    /\b(?:at|near|inside|outside|in|from)\s+(?:the\s+)?(.+?)(?=\s+(?:today|yesterday|tomorrow|after|before|on|around|when|where|with|and|the\s+mouse|i\s+lost|i\s+found)\b|[,.!?]|$)/i
+  );
+
+  return m && m[1] ? aiNormalizeText(m[1]) : '';
+}
+function aiExtractItem(text) {
+  const source = aiNormalizeText(text);
+
+  const found = source.match(
+    /(?:i\s+)?(?:found|picked\s+up|discovered)\s+(?:my\s+|the\s+|a\s+|an\s+)?(.+?)(?=\s+(?:at|near|inside|outside|in|from|yesterday|today|tomorrow|day before yesterday|last\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)|on|around|with|and)\b|[,.!?]|$)/i
+  );
+
+  if (found && found[1]) {
+    return aiNormalizeText(found[1]).replace(/\s+(?:was|is|has|had)\s*$/i, '').trim();
+  }
+
+  const lost = source.match(
+    /(?:i\s+)?(?:lost|misplaced|left|forgot|can't find|cannot find)\s+(?:my\s+|the\s+|a\s+|an\s+)?(.+?)(?=\s+(?:at|near|inside|outside|in|from|yesterday|today|tomorrow|day before yesterday|last\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)|on|around|with|and)\b|[,.!?]|$)/i
+  );
+
+  if (lost && lost[1]) {
+    return aiNormalizeText(lost[1]).replace(/\s+(?:was|is|has|had)\s*$/i, '').trim();
+  }
+
+  const alt = source.match(
+    /\b(?:my|a|an)\s+(.+?)(?=\s+(?:at|near|inside|outside|in|from|yesterday|today|tomorrow|on|last\s+)\b|[,.!?]|$)/i
+  );
+
+  return alt && alt[1] ? aiNormalizeText(alt[1]) : '';
+}
+
+function aiExtractBrand(text) {
+  const source = aiNormalizeText(text);
+  const m = source.match(/\b(?:brand|make|company)\s*(?:is|:)?\s*([a-z0-9][a-z0-9 .&-]{1,30}?)(?=\s+(?:in|at|near|inside|outside|from|yesterday|today|tomorrow|with|and)\b|[,.!?]|$)/i);
+  return m && m[1] ? aiCleanOptional(m[1]) : '';
+}
+
+function aiExtractContact(text) {
+  const m = String(text || '').match(/(?:contact|phone|mobile|number|call(?:\s+me)?(?:\s+at)?)?\s*[:=-]?\s*(\+?91[\s-]?\d{10}|\d{10})\b/i);
+  return m ? m[1].trim() : '';
+}
+
+function aiExtractDescription(text, item, location, date) {
+  let t = aiNormalizeText(text);
+  if (!t) return '';
+
+  const explicit = t.match(
+    /(?:it\s+has|it\s+contains|with|details?\s*(?:are|is)?|description\s*(?:is|are)?|identifying\s+details?\s*(?:are|is)?)\s+(.+?)(?=\s+(?:contact|phone|mobile|number)\s*(?:is|:)?\s*\+?\d|$)/i
+  );
+  if (explicit && explicit[1]) {
+    return aiCleanOptional(explicit[1].replace(/[.!?]+$/, '').trim());
+  }
+
+  if (item) {
+    const itemPattern = item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    t = t.replace(new RegExp('\\b' + itemPattern + '\\b', 'ig'), ' ');
+  }
+
+  if (location) {
+    const locationPattern = location.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    t = t.replace(
+      new RegExp('\\b(?:at|near|in|inside|outside|from)\\s+(?:the\\s+)?' + locationPattern + '\\b', 'ig'),
+      ' '
+    );
+  }
+
+  t = t.replace(/\b(i\s+)?(?:lost|misplaced|left|forgot|can't find|cannot find)\b/ig, ' ');
+  t = t.replace(/\b(?:my|the|a|an)\b/ig, ' ');
+  t = t.replace(/\b(?:today|yesterday|tomorrow|day before yesterday|this morning|this afternoon|tonight|\d+\s+days?\s+ago|last\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday))\b/ig, ' ');
+  t = t.replace(/\b(?:contact|phone|mobile|number)\s*(?:is|:)?\s*(?:\+?91[\s-]?)?\d{10}\b/ig, ' ');
+
+  // Remove filler left by natural-language descriptions.
+  t = t.replace(/^\s*(?:was|is|has|had)\s+/i, ' ');
+  t = t.replace(/[,.!?]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+  if (!t || aiLooksLikeLocation(t) || aiLooksLikeDate(t)) return '';
+  return aiCleanOptional(t);
+}
+
+function aiCleanOptional(text) {
+  const t = aiNormalizeText(text);
+  if (!t || /^(skip|none|no|nothing|not sure|unknown|don't know|dont know)$/i.test(t)) return '';
+  return t;
+}
+
+function aiAddMessage(who, text) {
+  const chat = document.getElementById('ai-report-chat');
+  if (!chat) return;
+  const d = document.createElement('div');
+  d.className = `ai-msg ${who}`;
+  d.textContent = text;
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
+  aiSetProgress();
+}
+
+function aiSetProgress() {
+  const p = document.getElementById('ai-report-progress');
+  if (!p || !aiLostReportState) return;
+  const s = aiLostReportState;
+  const done = [s.item, s.date, s.location, s.desc, s.image].filter(Boolean).length;
+  p.textContent = `Report details collected: ${done}/5${s.contact ? ' · Contact added' : ''}`;
+}
+
+function aiFindMissingField() {
+  const s = aiLostReportState;
+  if (!s.item) return 'item';
+  if (!s.location && !s.locationSkipped) return 'location';
+  if (!s.date) return 'date';
+  if (!s.desc && !s.descSkipped) return 'description';
+  if (!s.contactAsked) return 'contact';
+  return 'preview';
+}
+
+function aiAskNextQuestion() {
+  const missing = aiFindMissingField();
+  const s = aiLostReportState;
+  if (!s) return;
+
+  const isFound = s.type === 'found';
+  s.step = missing;
+
+  if (missing === 'item') {
+    return aiAddMessage('bot', isFound
+      ? 'What item did you find? Include its color, brand or model if you can.'
+      : 'What did you lose? Include its color, brand or model if you can.');
+  }
+
+  if (missing === 'location') {
+    return aiAddMessage('bot', isFound
+      ? 'Where did you find it? For example: library, canteen, classroom 204, Block B, or main gate.'
+      : 'Where did you last see it? For example: library, canteen, classroom 204, Block B, or main gate.');
+  }
+
+  if (missing === 'date') {
+    return aiAddMessage('bot', isFound
+      ? 'When did you find it? Say "today", "yesterday", or give a date such as 01/10/2026.'
+      : 'When did you last see it? Say "today", "yesterday", or give a date such as 01/10/2026.');
+  }
+
+  if (missing === 'description') {
+    return aiAddMessage('bot', 'Any identifying details? For example: color, brand, sticker, scratches, case, initials, or anything unique. Type "skip" if there are none.');
+  }
+
+  if (missing === 'contact') {
+    s.contactAsked = true;
+    return aiAddMessage('bot', 'Would you like to add a phone number for contact? Type a 10-digit number, or type "skip".');
+  }
+
+  showAILostPreview();
+}
+function openAILostReport() {
+  if (!currentUser || currentUser.role === 'admin') {
+    toast('Please sign in as a student to use the AI report assistant','error');
+    return;
+  }
+
+  aiLostReportState = {
+    item:'', category:'', date:'', location:'', desc:'', contact:'',
+    contactHidden:false, image:'', imageName:'', step:'collect',
+    type:'lost', locationSkipped:false, descSkipped:false,
+    contactAsked:false, previewShown:false, busy:false
+  };
+
+  const modal=document.getElementById('ai-lost-report-modal');
+  const chat=document.getElementById('ai-report-chat');
+  const input=document.getElementById('ai-report-input');
+  const actions=document.getElementById('ai-report-actions');
+  const photo=document.getElementById('ai-report-photo');
+
+  if (!modal || !chat || !input || !actions) {
+    toast('AI report assistant UI is not loaded. Please refresh the page.','error');
+    return;
+  }
+
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden','false');
+  chat.innerHTML='';
+  actions.style.display='none';
+  actions.innerHTML='';
+  input.disabled=false;
+  input.value='';
+  input.placeholder='Type your answer...';
+  input.onkeydown = function(event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      sendAILostMessage();
+    }
+  };
+
+  const send=document.getElementById('ai-report-send');
+  if (send) send.disabled=false;
+  if (photo) photo.value='';
+
+  aiAddMessage('bot','Hi! 👋 I can create your lost-item report. Tell me what you lost. You can give several details at once, for example: “I lost my black wallet in the library yesterday.”');
+  input.focus();
+}
+
+function closeAILostReport() {
+  const modal=document.getElementById('ai-lost-report-modal');
+  if (modal) {
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden','true');
+  }
+  aiLostReportState=null;
+}
+
+function handleAILostPhoto(input) {
+  const file=input?.files?.[0];
+  if (!file || !aiLostReportState) return;
+
+  if (!file.type.startsWith('image/')) {
+    toast('Please select an image file','error');
+    input.value='';
+    return;
+  }
+  if (file.size > 5*1024*1024) {
+    toast('Please use an image smaller than 5 MB','error');
+    input.value='';
+    return;
+  }
+
+  const reader=new FileReader();
+  reader.onload=(event)=>{
+    aiLostReportState.image=event.target.result;
+    aiLostReportState.imageName=file.name;
+    aiAddMessage('user',`📷 Photo uploaded: ${file.name}`);
+    aiAddMessage('bot','Got it. I attached the photo to your report.');
+    if (aiLostReportState.previewShown) showAILostPreview(true);
+    aiSetProgress();
+  };
+  reader.onerror=()=>toast('Could not read that image','error');
+  reader.readAsDataURL(file);
+  input.value='';
+}
+
+function aiApplyAnswer(text) {
+  const s=aiLostReportState;
+  const value=aiNormalizeText(text);
+  if (!s) return;
+
+  if (s.step === 'edit') {
+    if (/\b(item|name|lost)\b/i.test(value) && !/\bwhere\b|\blocation\b/i.test(value)) {
+      const m=value.match(/(?:item|name)\s*(?:is|to|:)?\s*(.+)$/i);
+      if (m) s.item=aiNormalizeText(m[1]);
+    }
+    if (/\b(location|place)\b/i.test(value)) {
+      const m=value.match(/(?:location|place)\s*(?:is|to|:)?\s*(.+)$/i);
+      s.location=m ? aiNormalizeText(m[1]) : (aiLocation(value) || s.location);
+    }
+    if (/\b(date|day|lost on)\b/i.test(value)) {
+      const d=aiDate(value);
+      if (d) s.date=d;
+    }
+    if (/\b(description|details|detail)\b/i.test(value)) {
+      const m=value.match(/(?:description|details?|detail)\s*(?:is|are|:)?\s*(.+)$/i);
+      if (m) s.desc=aiCleanOptional(m[1]);
+    }
+    if (/\b(contact|phone|number)\b/i.test(value)) {
+      const m=value.match(/(?:contact|phone|number)\s*(?:is|:)?\s*(.+)$/i);
+      if (m) {
+        const err=validateContact(m[1].trim());
+        if (!err) s.contact=m[1].trim();
+      }
+    }
+    s.category=aiCategory(`${s.item} ${s.desc}`);
+    s.step='collect';
+    aiAddMessage('bot','Updated. I have applied that change.');
+    showAILostPreview();
+    return;
+  }
+
+  if (!s.item) {
+    const item=aiExtractItem(value);
+    const brand=aiExtractBrand(value);
+
+    if (item && !aiLooksLikeDate(item) && !aiLooksLikeLocation(item)) {
+      s.item=item;
+      s.category=aiCategory(`${item} ${value}`);
+    } else if (brand && s.item) {
+      s.desc = s.desc ? `${brand} ${s.desc}` : brand;
+    } else if (s.step === 'item' && value && !aiLooksLikeDate(value) && !aiLooksLikeLocation(value)) {
+      // A short answer such as "pendrive" or "wallet" is a valid item answer.
+      s.item=aiCleanOptional(value);
+      s.category=aiCategory(`${s.item} ${value}`);
+    }
+  }
+
+  if (!s.location) {
+    const parsed=aiLocation(value);
+    if (parsed) s.location=parsed;
+    else if (s.step==='location' && aiLooksLikeLocation(value)) s.location=aiCleanOptional(value);
+  }
+
+  if (!s.date) {
+    const d=aiDate(value);
+    if (d) s.date=d;
+  }
+
+  if (s.item && s.location && s.date && !s.desc && s.step !== 'collect-initial') {
+    const cleaned=aiCleanOptional(value);
+    if (cleaned && cleaned!==s.item && !aiLooksLikeDate(cleaned) && !aiLooksLikeLocation(cleaned)) {
+      s.desc=cleaned.replace(/^(details?|description|it is|it's|identifying details?)\s*(?:are|is|:)?\s*/i,'').trim();
+    }
+  }
+
+  if (s.contactAsked && !s.contact) {
+    const candidate=aiCleanOptional(value);
+    if (!candidate) {
+      s.contact='';
+    } else {
+      const err=validateContact(candidate);
+      if (err) {
+        aiAddMessage('bot',`${err}. You can also type “skip”.`);
+        return;
+      }
+      s.contact=candidate;
+    }
+  }
+
+  const detectedContact=aiExtractContact(value);
+  if (detectedContact && !s.contact) s.contact=detectedContact;
+  const detectedDesc=aiExtractDescription(value,s.item,s.location,s.date);
+  if (detectedDesc && !s.desc && s.step !== 'contact') s.desc=detectedDesc;
+  s.category=aiCategory(`${s.item} ${s.desc} ${value}`);
+}
+
+function aiExtractLabeledFields(text) {
+  const result = {
+    item: '',
+    category: '',
+    location: '',
+    date: '',
+    desc: '',
+    contact: ''
+  };
+
+  const source = String(text || '').trim();
+  if (!source) return result;
+
+  const labels = 'item|item name|name|lost item|category|location|place|date|date lost|lost date|description|details|detail|contact|phone|phone number';
+
+  function extract(label) {
+    const pattern = new RegExp(
+      '(?:^|[\\n,])\\s*' + label + '\\s*:\\s*(.*?)' +
+      '(?=\\s*(?:' + labels + ')\\s*:|$)',
+      'i'
+    );
+    const match = source.match(pattern);
+    return match && match[1] ? aiNormalizeText(match[1]) : '';
+  }
+
+  result.item = aiCleanOptional(extract('item|item name|name|lost item'));
+  result.category = aiCleanOptional(extract('category'));
+  result.location = aiCleanOptional(extract('location|place'));
+  result.date = aiCleanOptional(extract('date|date lost|lost date'));
+  result.desc = aiCleanOptional(extract('description|details|detail'));
+  result.contact = aiCleanOptional(extract('contact|phone|phone number'));
+
+  return result;
+}
+
+function sendAILostMessage() {
+  const s = aiLostReportState;
+  if (!s || s.busy) return;
+
+  const input = document.getElementById('ai-report-input');
+  if (!input) return;
+
+  const text = aiNormalizeText(input.value);
+  if (!text) return;
+
+  aiAddMessage('user', text);
+  input.value = '';
+
+  // ---------------------------------------------------------
+  // FIRST MESSAGE: support both natural language and
+  // labeled multi-field input.
+  // ---------------------------------------------------------
+  if (
+    s.step === 'collect' &&
+    !s.item &&
+    !s.location &&
+    !s.date &&
+    !s.desc
+  ) {
+    s.step = 'collect-initial';
+
+    if (/\b(found|picked\s+up|discovered)\b/i.test(text)) {
+      s.type = 'found';
+    } else if (/\b(lost|misplaced|left|forgot|can't find|cannot find)\b/i.test(text)) {
+      s.type = 'lost';
+    }
+
+    const labeled = aiExtractLabeledFields(text);
+    const hasLabeledData =
+      labeled.item ||
+      labeled.category ||
+      labeled.location ||
+      labeled.date ||
+      labeled.desc ||
+      labeled.contact;
+
+    if (hasLabeledData) {
+      if (labeled.item) s.item = labeled.item;
+      if (labeled.category) s.category = labeled.category;
+      if (labeled.location) s.location = labeled.location;
+
+      if (labeled.date) {
+        s.date = aiDate(labeled.date) || labeled.date;
+      }
+
+      if (labeled.desc) s.desc = labeled.desc;
+
+      if (labeled.contact) {
+        const detectedContact = aiExtractContact(labeled.contact);
+        if (detectedContact) {
+          s.contact = detectedContact;
+        }
+      }
+
+      // If the user supplied a labeled item but no description,
+      // preserve useful text such as color/model as details.
+      if (!s.desc && s.item) {
+        const detectedDesc = aiExtractDescription(
+          text,
+          s.item,
+          s.location,
+          s.date
+        );
+        if (detectedDesc) s.desc = detectedDesc;
+      }
+
+      if (!s.category) {
+        s.category = aiCategory(`${s.item} ${s.desc} ${text}`);
+      }
+    } else {
+      // Existing natural-language behavior.
+      const item = aiExtractItem(text);
+      const loc = aiLocation(text);
+      const date = aiDate(text);
+      const contact = aiExtractContact(text);
+      const brand = aiExtractBrand(text);
+
+      if (item && !aiLooksLikeDate(item) && !aiLooksLikeLocation(item)) {
+        s.item = item;
+      }
+      if (loc) s.location = loc;
+      if (date) s.date = date;
+      if (contact) s.contact = contact;
+
+      s.desc = aiExtractDescription(
+        text,
+        s.item,
+        s.location,
+        s.date
+      );
+
+      if (brand) {
+        s.desc = s.desc ? `${brand} ${s.desc}` : brand;
+      }
+
+      s.category = aiCategory(`${text} ${s.item} ${s.desc}`);
+    }
+  } else {
+    // ---------------------------------------------------------
+    // SUBSEQUENT MESSAGE
+    // ---------------------------------------------------------
+    const labeled = aiExtractLabeledFields(text);
+    const hasLabeledData =
+      labeled.item ||
+      labeled.category ||
+      labeled.location ||
+      labeled.date ||
+      labeled.desc ||
+      labeled.contact;
+
+    if (hasLabeledData) {
+      if (labeled.item) s.item = labeled.item;
+      if (labeled.category) s.category = labeled.category;
+      if (labeled.location) s.location = labeled.location;
+
+      if (labeled.date) {
+        s.date = aiDate(labeled.date) || labeled.date;
+      }
+
+      if (labeled.desc) s.desc = labeled.desc;
+
+      if (labeled.contact) {
+        const detectedContact = aiExtractContact(labeled.contact);
+        if (detectedContact) s.contact = detectedContact;
+      }
+    } else {
+      // Handle normal conversational answers according to the
+      // field currently requested by the assistant.
+      if (s.step === 'item') {
+        const item = aiExtractItem(text);
+        if (item) s.item = item;
+      } else if (s.step === 'location') {
+        const location = aiLocation(text);
+        const optionalAnswer = aiCleanOptional(text);
+
+        if (location) {
+          s.location = location;
+          s.locationSkipped = false;
+        } else if (!optionalAnswer) {
+          s.location = '';
+          s.locationSkipped = true;
+        } else {
+          aiAddMessage(
+            'bot',
+            s.type === 'found'
+              ? 'Please tell me where you found it, such as library, classroom, canteen, or main gate. You can type "skip" if you are unsure.'
+              : 'Please tell me where you last saw it, such as library, classroom, canteen, or main gate. You can type "skip" if you are unsure.'
+          );
+          return;
+        }
+      } else if (s.step === 'date') {
+        const date = aiDate(text);
+        if (date) s.date = date;
+      } else if (s.step === 'description') {
+        const cleaned = aiCleanOptional(text);
+        if (cleaned) {
+          s.desc = cleaned;
+          s.descSkipped = false;
+        } else {
+          s.descSkipped = true;
+        }
+      } else if (s.step === 'contact') {
+        const cleaned = aiCleanOptional(text);
+
+        if (!cleaned) {
+          s.contact = '';
+        } else {
+          const contactError = validateContact(cleaned);
+          if (contactError) {
+            aiAddMessage(
+              'bot',
+              `${contactError}. You can also type "skip".`
+            );
+            return;
+          }
+          s.contact = cleaned;
+        }
+      } else {
+        aiApplyAnswer(text);
+      }
+    }
+
+    const detectedContact = aiExtractContact(text);
+    if (detectedContact && !s.contact) {
+      s.contact = detectedContact;
+    }
+
+    const detectedDesc = aiExtractDescription(
+      text,
+      s.item,
+      s.location,
+      s.date
+    );
+
+    if (detectedDesc && !s.desc && s.step !== 'contact') {
+      s.desc = detectedDesc;
+    }
+
+    if (!s.category) {
+      s.category = aiCategory(`${s.item} ${s.desc} ${text}`);
+    }
+  }
+
+  if (aiLostReportState?.step === 'edit') return;
+
+  const missing = aiFindMissingField();
+
+  if (missing === 'preview') {
+    return showAILostPreview();
+  }
+
+  aiSetProgress();
+  aiAskNextQuestion();
+}
+
+function showAILostPreview(refreshOnly=false) {
+  const s = aiLostReportState;
+  if (!s) return;
+
+  const isFound = s.type === 'found';
+  const reportLabel = isFound ? 'Found' : 'Lost';
+
+  s.previewShown = true;
+
+  if (!refreshOnly) {
+    aiAddMessage('bot', 'Please check the report below. If everything is correct, submit it. You can edit any detail before submitting.');
+  }
+
+  const chat = document.getElementById('ai-report-chat');
+  const d = document.createElement('div');
+  d.className = 'ai-msg bot';
+
+  const imageHtml = s.image
+    ? `<div class="ai-report-photo-preview"><img src="${s.image}" alt="${reportLabel} item photo"><span>${escapeHtml(s.imageName || 'Photo attached')}</span></div>`
+    : 'Not attached';
+
+  d.innerHTML = `
+    <div class="ai-report-preview">
+      <h4>${reportLabel} Item Report Preview</h4>
+      <div class="ai-report-preview-row"><b>Item</b><span>${escapeHtml(s.item || '-')}</span></div>
+      <div class="ai-report-preview-row"><b>Category</b><span>${escapeHtml(s.category || 'other')}</span></div>
+      <div class="ai-report-preview-row"><b>Date ${reportLabel}</b><span>${escapeHtml(s.date || '-')}</span></div>
+      <div class="ai-report-preview-row"><b>Location</b><span>${escapeHtml(s.location || '-')}</span></div>
+      <div class="ai-report-preview-row"><b>Details</b><span>${escapeHtml(s.desc || 'None')}</span></div>
+      <div class="ai-report-preview-row"><b>Contact</b><span>${escapeHtml(s.contact || 'Not provided')}</span></div>
+      <div class="ai-report-preview-row"><b>Photo</b><span>${imageHtml}</span></div>
+    </div>`;
+
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
+
+  const actions = document.getElementById('ai-report-actions');
+  const input = document.getElementById('ai-report-input');
+  const send = document.getElementById('ai-report-send');
+
+  if (actions) {
+    actions.innerHTML = `<button type="button" class="btn btn-outline" onclick="editAILostReport()">Edit</button><button type="button" class="btn btn-primary" onclick="submitAILostReportFromAI()">Submit ${reportLabel} Report</button>`;
+    actions.style.display = 'flex';
+  }
+
+  if (input) {
+    input.disabled = true;
+    input.placeholder = 'Report preview ready';
+  }
+
+  if (send) send.disabled = true;
+  aiSetProgress();
+}
+function editAILostReport() {
+  const s=aiLostReportState;
+  if (!s) return;
+
+  s.step='edit';
+  s.previewShown=false;
+
+  const actions=document.getElementById('ai-report-actions');
+  const input=document.getElementById('ai-report-input');
+  const send=document.getElementById('ai-report-send');
+
+  if (actions) { actions.style.display='none'; actions.innerHTML=''; }
+  if (input) { input.disabled=false; input.placeholder='Example: location is Block B library'; input.focus(); }
+  if (send) send.disabled=false;
+
+  aiAddMessage('bot','Tell me what to change. Examples: “item is a black wallet”, “location is Block B library”, “date is yesterday”, “details are blue sticker”, or “contact is 9876543210”.');
+}
+
+async function submitAILostReportFromAI() {
+  const s = aiLostReportState;
+  if (!s || s.busy) return;
+  s.busy = true;
+  const isFound = s.type === 'found';
+
+  try {
+    const user = await ensureCurrentUser();
+    if (!user) throw new Error('Please sign in again.');
+    if (user.role === 'admin') throw new Error('Admin accounts cannot create student reports.');
+    if (!s.item || !s.location || !s.date) {
+      throw new Error('Please complete the item, location and date before submitting.');
+    }
+
+    const contact = String(s.contact || '').trim();
+    const contactError = validateContact(contact);
+    if (contactError) throw new Error(contactError);
+
+    const item = {
+      id: genId(),
+      userId: user.id,
+      name: s.item.trim(),
+      category: s.category || aiCategory(s.item + ' ' + (s.desc || '')) || 'other',
+      location: s.location.trim(),
+      desc: (s.desc || '').trim(),
+      contact: contact,
+      contactHidden: false,
+      image: s.image || '',
+      status: 'open',
+      created: typeof today === 'function' ? today() : new Date().toISOString()
+    };
+
+    if (isFound) {
+      item.foundDate = s.date;
+      item.storage = '';
+    } else {
+      item.date = s.date;
+    }
+
+    const key = isFound ? 'found_items' : 'lost_items';
+    const items = DB.get(key);
+    items.push(item);
+    DB.set(key, items);
+
+    aiAddMessage('bot', isFound
+      ? 'Your found-item report has been submitted successfully.'
+      : 'Your lost-item report has been submitted successfully.');
+    toast(isFound ? 'AI found report submitted successfully!' : 'AI lost report submitted successfully!', 'success');
+
+    try {
+      await Promise.resolve(runAutoMatch(item, isFound ? 'found' : 'lost'));
+    } catch (matchError) {
+      console.warn('AI report auto-match warning:', matchError);
+    }
+
+    updateBadges();
+    refreshDashboard();
+    renderBrowse();
+    if (typeof renderMyReports === 'function') renderMyReports();
+
+    const actions = document.getElementById('ai-report-actions');
+    if (actions) {
+      actions.innerHTML = '<button type="button" class="btn btn-primary" onclick="closeAILostReport();showPage(\'my-reports\')">View My Reports</button>';
+      actions.style.display = 'flex';
+    }
+
+    const input = document.getElementById('ai-report-input');
+    const send = document.getElementById('ai-report-send');
+    if (input) {
+      input.disabled = true;
+      input.placeholder = 'Report submitted';
+    }
+    if (send) send.disabled = true;
+  } catch (error) {
+    console.error('AI report submission error:', error);
+    toast(error.message || 'Could not save the report', 'error');
+    aiAddMessage('bot', 'I could not save the report. Please check the details and try again.');
+  } finally {
+    s.busy = false;
+  }
+}
+// ───────────────────────────────────────────────
 //  REPORT LOST / FOUND
-// ═══════════════════════════════════════════════
+// ───────────────────────────────────────────────
 let lostImageData  = '';
 let foundImageData = '';
 
@@ -660,6 +1336,9 @@ function editReport(id, type) {
     document.getElementById('lost-date').value = item.date || '';
     document.getElementById('lost-location').value = item.location || '';
     document.getElementById('lost-desc').value = item.desc || '';
+    document.getElementById('lost-color').value = item.color || '';
+    document.getElementById('lost-brand').value = item.brand || '';
+    document.getElementById('lost-features').value = item.features || '';
     document.getElementById('lost-contact').value = item.contact || '';
     document.getElementById('lost-hide-contact').checked = !!item.contactHidden;
     lostImageData = item.image || '';
@@ -670,6 +1349,9 @@ function editReport(id, type) {
     document.getElementById('found-date').value = item.foundDate || '';
     document.getElementById('found-location').value = item.location || '';
     document.getElementById('found-desc').value = item.desc || '';
+    document.getElementById('found-color').value = item.color || '';
+    document.getElementById('found-brand').value = item.brand || '';
+    document.getElementById('found-features').value = item.features || '';
     document.getElementById('found-storage').value = item.storage || '';
     document.getElementById('found-contact').value = item.contact || '';
     document.getElementById('found-hide-contact').checked = !!item.contactHidden;
@@ -830,7 +1512,15 @@ async function submitLostItem() {
   const cat  = document.getElementById('lost-cat').value;
   const date = document.getElementById('lost-date').value;
   const loc  = document.getElementById('lost-location').value.trim();
-  if (!name || !cat || !date || !loc) { toast('Please fill all required fields', 'error'); return; }
+  const missingLostFields = [];
+  if (!name) missingLostFields.push('Item name');
+  if (!cat) missingLostFields.push('Category');
+  if (!date) missingLostFields.push('Date last seen');
+  if (!loc) missingLostFields.push('Location last seen');
+  if (missingLostFields.length) {
+    toast(`Please complete: ${missingLostFields.join(', ')}.`, 'error');
+    return;
+  }
 
   const lostContact = document.getElementById('lost-contact').value.trim();
   const lostContactError = validateContact(lostContact);
@@ -842,6 +1532,9 @@ async function submitLostItem() {
     id: genId(), userId: user.id,
     name, category: cat, date, location: loc,
     desc:    document.getElementById('lost-desc').value.trim(),
+    color:   document.getElementById('lost-color').value,
+    brand:   document.getElementById('lost-brand').value.trim(),
+    features: document.getElementById('lost-features').value.trim(),
     contact: lostContact,
     contactHidden: hideLostContact,
     image: lostImageData, status: 'open', created: today(),
@@ -853,7 +1546,7 @@ async function submitLostItem() {
     resetLostForm();
     toast('Lost item reported successfully! 📋', 'success');
     setTimeout(() => showPage('dashboard'), 800);
-    await runAutoMatch(newItem, 'lost');
+    runAutoMatch(newItem, 'lost');
   } catch (err) {
     toast(err.message || 'Could not save the lost item', 'error');
   }
@@ -875,7 +1568,15 @@ async function submitFoundItem() {
   const cat  = document.getElementById('found-cat').value;
   const date = document.getElementById('found-date').value;
   const loc  = document.getElementById('found-location').value.trim();
-  if (!name || !cat || !date || !loc) { toast('Please fill all required fields', 'error'); return; }
+  const missingFoundFields = [];
+  if (!name) missingFoundFields.push('Item name');
+  if (!cat) missingFoundFields.push('Category');
+  if (!date) missingFoundFields.push('Date found');
+  if (!loc) missingFoundFields.push('Location found');
+  if (missingFoundFields.length) {
+    toast(`Please complete: ${missingFoundFields.join(', ')}.`, 'error');
+    return;
+  }
 
   const foundContact = document.getElementById('found-contact').value.trim();
   const foundContactError = validateContact(foundContact);
@@ -887,6 +1588,9 @@ async function submitFoundItem() {
     id: genId(), userId: user.id,
     name, category: cat, foundDate: date, location: loc,
     desc:    document.getElementById('found-desc').value.trim(),
+    color:   document.getElementById('found-color').value,
+    brand:   document.getElementById('found-brand').value.trim(),
+    features: document.getElementById('found-features').value.trim(),
     storage: document.getElementById('found-storage').value.trim(),
     contact: foundContact,
     contactHidden: hideFoundContact,
@@ -899,82 +1603,126 @@ async function submitFoundItem() {
     resetFoundForm();
     toast('Found item reported successfully! 📦', 'success');
     setTimeout(() => showPage('dashboard'), 800);
-    await runAutoMatch(newItem, 'found');
+    runAutoMatch(newItem, 'found');
   } catch (err) {
     toast(err.message || 'Could not save the found item', 'error');
   }
 }
 
 async function runAutoMatch(newItem, type) {
-  const opposite = type === 'lost' ? DB.get('found_items') : DB.get('lost_items');
-  const candidates = opposite
-    .filter(o => o.status === 'open')
-    .map(o => ({ item: o, baseScore: type === 'lost' ? matchScore(newItem, o) : matchScore(o, newItem) }))
-    .filter(m => m.baseScore >= 30)
-    .sort((a, b) => b.baseScore - a.baseScore)
-    .slice(0, 10);
+  const runLocalFallback = () => {
+    const opposite = type === 'lost'
+      ? DB.get('found_items')
+      : DB.get('lost_items');
 
-  let best = null;
-  for (const candidate of candidates) {
-    const lost = type === 'lost' ? newItem : candidate.item;
-    const found = type === 'lost' ? candidate.item : newItem;
-    const analysis = await getHybridMatchAnalysis(lost, found);
-    if (!best || analysis.score > best.score) {
-      best = { item: candidate.item, score: analysis.score, analysis, lost, found };
+    const best = opposite
+      .map(item => ({
+        item,
+        score: type === 'lost'
+          ? matchScore(newItem, item)
+          : matchScore(item, newItem)
+      }))
+      .filter(match => match.score >= 60)
+      .sort((a, b) => b.score - a.score)[0];
+
+    if (best) {
+      setTimeout(() => {
+        toast(
+          `Possible local match found! (${best.score}% confidence) — check Dashboard`,
+          'info'
+        );
+      }, 1200);
     }
+  };
+
+  if (type !== 'lost' && type !== 'found') {
+    console.warn('Auto-match skipped: invalid report type.');
+    return;
   }
 
-  if (best && best.score >= 60) {
-    setTimeout(() => toast(`🤖 AI possible match found! (${best.score}% confidence) — check Dashboard`, 'info'), 1200);
-  }
+  try {
+    const response = await requestTraceMateAI('/api/ai/auto-match', {
+      method: 'POST',
+      body: JSON.stringify({ type, newItem })
+    });
 
-  if (type === 'found') {
-    await createLostOwnerMatchNotifications(newItem);
-  } else if (type === 'lost' && best && best.score >= 60 && currentUser) {
-    const users = DB.get('users');
-    const owner = users.find(u => u.id === currentUser.id);
-    if (owner) {
-      if (!Array.isArray(owner.notifications)) owner.notifications = [];
-      const duplicate = owner.notifications.some(n => n.type === 'match_found' && n.lostItemId === newItem.id && n.foundItemId === best.item.id);
-      if (!duplicate) {
-        owner.notifications.unshift({
-          id: genId(),
-          type: 'match_found',
-          read: false,
-          time: new Date().toISOString(),
-          score: best.score,
-          lostItemId: newItem.id,
-          foundItemId: best.item.id,
-          aiAnalysis: best.analysis,
-          message: `A similar found report was identified for "${newItem.name}" (${best.score}% match confidence).`,
-        });
-        owner.notifications = owner.notifications.slice(0, 25);
-        DB.set('users', users);
-      }
+    if (!response || response.success !== true ||
+        !Array.isArray(response.matches)) {
+      throw new Error('Hybrid auto-match returned an unexpected response.');
     }
+
+    const rankedMatches = response.matches
+      .filter(match =>
+        match &&
+        match.lostItem &&
+        match.foundItem &&
+        Number.isFinite(Number(match.score))
+      )
+      .sort((a, b) => Number(b.score) - Number(a.score));
+
+    // Diagnostic metadata only: do not reject matches based solely
+    // on the NLP decision during the initial integration.
+    const diagnosticMatch = rankedMatches[0];
+
+    if (diagnosticMatch) {
+      console.info('TraceMate hybrid auto-match diagnostics:', {
+        score: Number(diagnosticMatch.score),
+        pythonNlpBackend: diagnosticMatch.pythonNlpBackend ?? null,
+        pythonNlpMatch: diagnosticMatch.pythonNlpMatch ?? null,
+        pythonNlpUsed: diagnosticMatch.pythonNlpUsed ?? false,
+        pythonNlpFallbackUsed: diagnosticMatch.pythonNlpFallbackUsed ?? null,
+        effectiveTextScore: diagnosticMatch.effectiveTextScore ?? null
+      });
+    }
+
+    const best = rankedMatches.find(match => Number(match.score) >= 60);
+
+    if (best) {
+      const otherItem = type === 'lost'
+        ? best.foundItem
+        : best.lostItem;
+
+      const itemName = String(
+        otherItem.name || otherItem.itemName || 'another report'
+      );
+
+      setTimeout(() => {
+        toast(
+          `🤖 Possible hybrid AI match: "${itemName}" (${Math.round(Number(best.score))}% confidence) — check Dashboard`,
+          'info'
+        );
+      }, 1200);
+    }
+
+    console.info('TraceMate hybrid auto-match completed:', {
+      type,
+      returnedMatches: rankedMatches.length
+    });
+  } catch (error) {
+    console.warn(
+      'Hybrid auto-match unavailable; using local fallback:',
+      error.message
+    );
+
+    runLocalFallback();
   }
-
-  return best;
-}
-
-async function createLostOwnerMatchNotifications(foundItem) {
+}function createLostOwnerMatchNotifications(foundItem) {
   const lostItems = DB.get('lost_items').filter(i => i.status === 'open' && i.userId !== foundItem.userId);
   if (!lostItems.length) return;
 
   const users = DB.get('users');
   let changed = false;
 
-  for (const lostItem of lostItems.slice(0, 25)) {
-    const analysis = await getHybridMatchAnalysis(lostItem, foundItem);
-    const score = analysis.score;
-    if (score < 60) continue;
+  lostItems.forEach(lostItem => {
+    const score = matchScore(lostItem, foundItem);
+    if (score < 60) return;
 
     const owner = users.find(u => u.id === lostItem.userId);
-    if (!owner) continue;
+    if (!owner) return;
 
     if (!Array.isArray(owner.notifications)) owner.notifications = [];
     const duplicate = owner.notifications.some(n => n.type === 'match_found' && n.lostItemId === lostItem.id && n.foundItemId === foundItem.id);
-    if (duplicate) continue;
+    if (duplicate) return;
 
     owner.notifications.unshift({
       id: genId(),
@@ -984,22 +1732,21 @@ async function createLostOwnerMatchNotifications(foundItem) {
       score,
       lostItemId: lostItem.id,
       foundItemId: foundItem.id,
-      aiAnalysis: analysis,
-      message: `Admin/AI found a possible match for "${lostItem.name}" (${score}% match confidence).`,
+      message: `A similar found report was submitted for "${lostItem.name}" (${score}% match).`,
     });
     owner.notifications = owner.notifications.slice(0, 25);
     changed = true;
 
     if (currentUser?.id === owner.id) {
-      setTimeout(() => toast(`🔔 AI match for "${lostItem.name}" (${score}%)`, 'info'), 900);
+      setTimeout(() => toast(`🔔 New match for "${lostItem.name}" (${score}%)`, 'info'), 900);
     }
-  }
+  });
 
   if (changed) {
     try {
       DB.set('users', users);
     } catch {
-      // Keep found report flow successful if notification persistence fails.
+      // Keep found report flow successful even if notification write fails.
     }
   }
 }
@@ -1007,7 +1754,8 @@ async function createLostOwnerMatchNotifications(foundItem) {
 function resetLostForm() {
   const wasEditing = reportEditState.type === 'lost';
   reportEditState = { id: null, type: null };
-  ['lost-name','lost-location','lost-desc','lost-contact'].forEach(id => document.getElementById(id).value = '');
+  ['lost-name','lost-location','lost-desc','lost-brand','lost-features','lost-contact'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('lost-color').value = '';
   document.getElementById('lost-cat').value  = '';
   document.getElementById('lost-date').value = '';
   const lostHideContact = document.getElementById('lost-hide-contact');
@@ -1024,7 +1772,8 @@ function resetLostForm() {
 function resetFoundForm() {
   const wasEditing = reportEditState.type === 'found';
   reportEditState = { id: null, type: null };
-  ['found-name','found-location','found-desc','found-storage','found-contact'].forEach(id => document.getElementById(id).value = '');
+  ['found-name','found-location','found-desc','found-brand','found-features','found-storage','found-contact'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('found-color').value = '';
   document.getElementById('found-cat').value  = '';
   document.getElementById('found-date').value = '';
   const foundHideContact = document.getElementById('found-hide-contact');
@@ -1064,6 +1813,10 @@ async function updateLostItemFromForm(user) {
     return;
   }
 
+  const imageChanged = !!lostImageData && lostImageData !== item.image;
+
+
+
   const updatedItem = {
     ...item,
     name,
@@ -1071,11 +1824,27 @@ async function updateLostItemFromForm(user) {
     date,
     location: loc,
     desc: document.getElementById('lost-desc').value.trim(),
+    color: document.getElementById('lost-color').value,
+    brand: document.getElementById('lost-brand').value.trim(),
+    features: document.getElementById('lost-features').value.trim(),
     contact,
     contactHidden: document.getElementById('lost-hide-contact')?.checked || false,
-    image: lostImageData || '',
+    image: lostImageData || item.image || '',
     updated: today(),
   };
+  if (imageChanged) {
+    delete updatedItem.imageEmbedding;
+    delete updatedItem.clipEmbedding;
+    delete updatedItem.imageEmbeddingModel;
+    delete updatedItem.imageEmbeddingDimension;
+    delete updatedItem.clipEmbeddingModel;
+    delete updatedItem.clipEmbeddingDimension;
+    delete updatedItem.visualRecognition;
+    delete updatedItem.visualDetails;
+    delete updatedItem.visualModels;
+    delete updatedItem.visualMethod;
+    delete updatedItem.clipAvailable;
+  }
 
   try {
     items[index] = updatedItem;
@@ -1118,6 +1887,10 @@ async function updateFoundItemFromForm(user) {
     return;
   }
 
+  const imageChanged = !!foundImageData && foundImageData !== item.image;
+
+
+
   const updatedItem = {
     ...item,
     name,
@@ -1125,12 +1898,28 @@ async function updateFoundItemFromForm(user) {
     foundDate: date,
     location: loc,
     desc: document.getElementById('found-desc').value.trim(),
+    color: document.getElementById('found-color').value,
+    brand: document.getElementById('found-brand').value.trim(),
+    features: document.getElementById('found-features').value.trim(),
     storage: document.getElementById('found-storage').value.trim(),
     contact,
     contactHidden: document.getElementById('found-hide-contact')?.checked || false,
-    image: foundImageData || '',
+    image: foundImageData || item.image || '',
     updated: today(),
   };
+  if (imageChanged) {
+    delete updatedItem.imageEmbedding;
+    delete updatedItem.clipEmbedding;
+    delete updatedItem.imageEmbeddingModel;
+    delete updatedItem.imageEmbeddingDimension;
+    delete updatedItem.clipEmbeddingModel;
+    delete updatedItem.clipEmbeddingDimension;
+    delete updatedItem.visualRecognition;
+    delete updatedItem.visualDetails;
+    delete updatedItem.visualModels;
+    delete updatedItem.visualMethod;
+    delete updatedItem.clipAvailable;
+  }
 
   try {
     items[index] = updatedItem;
@@ -1147,9 +1936,9 @@ async function updateFoundItemFromForm(user) {
   }
 }
 
-// ═══════════════════════════════════════════════
+// ───────────────────────────────────────────────
 //  MY REPORTS
-// ═══════════════════════════════════════════════
+// ───────────────────────────────────────────────
 function renderMyReports() {
   if (!currentUser) return;
   const lost  = DB.get('lost_items').filter(i => i.userId === currentUser.id);
@@ -1200,73 +1989,109 @@ function renderMyReports() {
 
 function deleteItem(id, type) {
   if (!confirm('Delete this report?')) return;
-  const key   = type === 'lost' ? 'lost_items' : 'found_items';
-  const items = DB.get(key).filter(i => i.id !== id);
-  DB.set(key, items);
-  toast('Report deleted', 'success');
-  renderMyReports();
+  const key = type === 'lost' ? 'lost_items' : 'found_items';
+  try {
+    DB.removeItem(key, id);
+    toast('Report deleted', 'success');
+    renderMyReports();
+    if (typeof renderAdmin === 'function' && currentUser?.role === 'admin') renderAdmin();
+  } catch (error) {
+    toast(error.message || 'Could not delete report', 'error');
+  }
 }
 
-// ═══════════════════════════════════════════════
+// ───────────────────────────────────────────────
 //  CLAIMS
-// ═══════════════════════════════════════════════
-async function showClaimPrompt(foundItemId) {
+// ───────────────────────────────────────────────
+function showClaimPrompt(foundItemId) {
   if (!currentUser || currentUser.role === 'admin') return;
   const lost  = DB.get('lost_items').filter(i => i.userId === currentUser.id && i.status === 'open');
   const found = DB.get('found_items').find(i => i.id === foundItemId);
   if (!found) return;
 
-  document.getElementById('modal-title').textContent = 'AI Match Review: ' + found.name;
-  document.getElementById('modal-body').innerHTML = `
-    <div class="empty-state" style="padding:24px;">
-      <div class="empty-icon">🤖</div>
-      <p>TraceMate AI is comparing your lost report with the found item.</p>
-      <small>CNN/CLIP image analysis + NLP + category, location and date signals.</small>
-    </div>
-  `;
-  openModal('item-modal');
+  const rankedLost = lost
+    .map(item => ({ item, score: matchScore(item, found) }))
+    .sort((a, b) => b.score - a.score);
 
-  const ranked = [];
-  for (const item of lost) {
-    const analysis = await getHybridMatchAnalysis(item, found);
-    ranked.push({ item, analysis });
-  }
-  ranked.sort((a, b) => b.analysis.score - a.analysis.score);
-
+  document.getElementById('modal-title').textContent = 'Claim: ' + found.name;
   document.getElementById('modal-body').innerHTML = `
     ${lost.length === 0
       ? `<div class="empty-state" style="padding:24px;">
            <div class="empty-icon">📋</div>
            <p>You have no open lost item reports to match with.</p>
-           <button class="btn btn-amber" style="margin-top:12px;" onclick="closeModal('item-modal');showPage('report-lost');">Report Lost Item First</button>
+           <button class="btn btn-amber" style="margin-top:12px;"
+             onclick="closeModal('item-modal');showPage('report-lost');">Report Lost Item First</button>
          </div>`
-      : ranked.map(({ item: l, analysis }, index) => `
-          <div class="match-card match-card-claim">
-            <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap;">
-              <div class="match-info" style="margin-bottom:0;">
-                <div class="match-title">${escapeHtml(l.name)}</div>
-                <div class="match-meta">Found item: ${escapeHtml(found.name)}</div>
+      : rankedLost.map(({ item: l, score }, index) => {
+          return `
+            <div class="match-card match-card-claim">
+              <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap;">
+                <div class="match-info" style="margin-bottom:0;">
+                  <div class="match-title">${l.name}</div>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
+                  <div class="match-score">${score}%</div>
+                  ${index === 0 ? '<span class="status status-approved" style="padding:3px 8px;">Best match</span>' : ''}
+                </div>
               </div>
-              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
-                <div class="match-score">${analysis.score}%</div>
-                ${index === 0 ? '<span class="status status-approved" style="padding:3px 8px;">Highest AI match</span>' : ''}
+              <div class="admin-compare-grid" style="margin-top:12px;">
+                ${renderClaimCompareCard(found, 'Found Item')}
+                ${renderClaimCompareCard(l, 'Your Lost Item', score)}
+              </div>
+              <div class="claim-compare-actions" style="margin-top:14px;justify-content:space-between;">
+                <div style="font-size:12px;color:var(--gray3);align-self:center;">
+                  Review this match and choose an action.
+                </div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
+                  <button class="btn btn-sm btn-success" onclick="submitClaim('${l.id}','${foundItemId}',${score})">Approve</button>
+                  <button class="btn btn-sm btn-danger" onclick="closeModal('item-modal')">Reject</button>
+                </div>
               </div>
             </div>
-            <div class="admin-compare-grid" style="margin-top:12px;">
-              ${renderClaimCompareCard(found, 'Found Item')}
-              ${renderClaimCompareCard(l, 'Your Lost Item', analysis.score)}
-            </div>
-            ${renderAIMatchBreakdown(analysis)}
-            <div class="claim-compare-actions" style="margin-top:14px;justify-content:space-between;">
-              <div style="font-size:12px;color:var(--gray3);align-self:center;">AI score is decision support; Admin performs final identity verification.</div>
-              <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
-                <button class="btn btn-sm btn-success" onclick="submitClaim('${l.id}','${foundItemId}',${analysis.score})">Approve</button>
-                <button class="btn btn-sm btn-danger" onclick="closeModal('item-modal')">Reject</button>
-              </div>
-            </div>
-          </div>
-        `).join('')
+          `;
+        }).join('')
     }
+  `;
+  document.getElementById('item-modal').classList.add('show');
+}
+
+function renderClaimCompareCard(item, title, score = null) {
+  const dateLabel = item.foundDate ? 'Date Found' : 'Date Lost';
+  const dateValue = fmtDate(item.foundDate || item.date);
+  return `
+    <div class="compare-card">
+      <div class="compare-header">${title}</div>
+      ${item.image
+        ? `<img class="compare-image" src="${item.image}" alt="${escapeHtml(item.name || title)}">`
+        : `<div class="compare-image compare-placeholder">${getCatEmoji(item.category, item.name)}</div>`
+      }
+      <div class="compare-row">
+        <span class="compare-label">Name</span>
+        <span class="compare-value">${escapeHtml(item.name || '-')}</span>
+      </div>
+      <div class="compare-row">
+        <span class="compare-label">Category</span>
+        <span class="compare-value">${capitalize(item.category || 'other')}</span>
+      </div>
+      <div class="compare-row">
+        <span class="compare-label">${dateLabel}</span>
+        <span class="compare-value">${dateValue}</span>
+      </div>
+      <div class="compare-row">
+        <span class="compare-label">Location</span>
+        <span class="compare-value">${escapeHtml(item.location || '-')}</span>
+      </div>
+      ${item.desc ? `
+        <div class="compare-row compare-desc">
+          <span class="compare-label">Description</span>
+          <span class="compare-value">${escapeHtml(item.desc)}</span>
+        </div>` : ''}
+      ${score !== null ? `
+        <div class="compare-row">
+          <span class="compare-label">Match score</span>
+          <span class="compare-value">${score}%</span>
+        </div>` : ''}
+    </div>
   `;
 }
 
@@ -1628,8 +2453,39 @@ function fmtDateTime(value) {
   return dt.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+// Decode legacy HTML entities before escaping. Older reports may contain
+// values such as charger&#x72; or &amp;#x53;ame category. Decode only as text,
+// then escape the result before inserting it into HTML.
+function decodeLegacyHtmlEntities(value) {
+  let decoded = String(value ?? '');
+  const namedEntities = {
+    amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0',
+    colon: ':', sol: '/', period: '.', comma: ',', hyphen: '-', ndash: '\u2013',
+    mdash: '\u2014', rsquo: '\u2019', lsquo: '\u2018', rdquo: '\u201d',
+    ldquo: '\u201c', bull: '\u2022', hellip: '\u2026', copy: '\u00a9',
+    reg: '\u00ae', trade: '\u2122', pound: '\u00a3', euro: '\u20ac'
+  };
+  const decodePass = text => text
+    .replace(/&#(?:x([0-9a-f]{1,8})|(\d{1,10}));?/gi, (whole, hex, decimal) => {
+      const cp = Number.parseInt(hex || decimal, hex ? 16 : 10);
+      if (!Number.isFinite(cp) || cp < 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return whole;
+      try { return String.fromCodePoint(cp); } catch { return whole; }
+    })
+    .replace(/&([a-z][a-z0-9]+);/gi, (whole, name) => {
+      const replacement = namedEntities[name.toLowerCase()];
+      return replacement === undefined ? whole : replacement;
+    });
+  // Repeated passes also decode nested values such as &amp;amp;#x53;ame.
+  for (let pass = 0; pass < 12; pass += 1) {
+    const next = decodePass(decoded);
+    if (next === decoded) break;
+    decoded = next;
+  }
+  return decoded;
+}
+
 function escapeHtml(value) {
-  return String(value)
+  return decodeLegacyHtmlEntities(value)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -1637,21 +2493,34 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-// ═══════════════════════════════════════════════
+// ───────────────────────────────────────────────
 //  ITEM DETAIL MODAL
-// ═══════════════════════════════════════════════
+// ───────────────────────────────────────────────
 function openItemModal(id, type) {
   const items    = type === 'lost' ? DB.get('lost_items') : DB.get('found_items');
   const item     = items.find(i => i.id === id);
   if (!item) return;
   const users    = DB.get('users');
   const reporter = users.find(u => u.id === item.userId);
+  const reportHistory = Array.isArray(item.history) ? item.history.slice(-8).reverse() : [];
+  const reportHistoryHtml = reportHistory.length ? `
+    <div class="item-modal-panel" style="margin-top:14px;">
+      <div class="item-modal-label">🕘 Report History</div>
+      <div style="display:grid;gap:10px;margin-top:8px;">
+        ${reportHistory.map(entry => `
+          <div style="border-left:3px solid var(--amber,#d99a25);padding:2px 0 2px 10px;">
+            <div style="font-size:13px;font-weight:700;">${escapeHtml(entry.event === 'created' ? 'Report created' : entry.event === 'updated' ? 'Report updated' : String(entry.event || 'Report history'))}</div>
+            <div style="font-size:11px;color:var(--gray3);margin-top:2px;">${escapeHtml(entry.time || '')}</div>
+            ${Array.isArray(entry.changedFields) && entry.changedFields.length ? `<div style="font-size:12px;margin-top:4px;">Changed: ${entry.changedFields.map(field => escapeHtml(field)).join(', ')}</div>` : ''}
+          </div>`).join('')}
+      </div>
+    </div>` : '';
 
   document.getElementById('modal-title').textContent = item.name;
   document.getElementById('modal-body').innerHTML = `
     ${item.image
       ? `<img src="${item.image}" class="item-modal-image" alt="${item.name}">`
-      : `<div class="item-modal-placeholder">${getCatEmoji(item.category)}</div>`
+      : `<div class="item-modal-placeholder">${getCatEmoji(item.category, item.name)}</div>`
     }
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
       <div style="background:var(--gray1);padding:12px;border-radius:10px;">
@@ -1660,7 +2529,7 @@ function openItemModal(id, type) {
       </div>
       <div style="background:var(--gray1);padding:12px;border-radius:10px;">
         <div style="font-size:11px;color:var(--gray3);font-weight:700;text-transform:uppercase;margin-bottom:4px;">Category</div>
-        <span class="cat-tag">${getCatEmoji(item.category)} ${capitalize(item.category || 'other')}</span>
+        <span class="cat-tag">${getCatEmoji(item.category, item.name)} ${capitalize(item.category || 'other')}</span>
       </div>
       <div style="background:var(--gray1);padding:12px;border-radius:10px;">
         <div style="font-size:11px;color:var(--gray3);font-weight:700;text-transform:uppercase;margin-bottom:4px;">${type === 'lost' ? 'Date Lost' : 'Date Found'}</div>
@@ -1693,6 +2562,7 @@ function openItemModal(id, type) {
       </div>
       ${item.contactHidden ? '<div style="font-size:12px;color:var(--gray3);margin-top:6px;">Contact number hidden by reporter</div>' : ''}
     </div>
+    ${reportHistoryHtml}
     ${type === 'found' && currentUser && currentUser.role !== 'admin' && item.userId !== currentUser.id && item.status === 'open'
       ? `<button class="btn btn-primary btn-full" onclick="closeModal('item-modal');showClaimPrompt('${item.id}')">🏷️ Claim This Item</button>`
       : ''}
@@ -1704,9 +2574,9 @@ function closeModal(id) {
   document.getElementById(id).classList.remove('show');
 }
 
-// ═══════════════════════════════════════════════
+// ───────────────────────────────────────────────
 //  BADGES
-// ═══════════════════════════════════════════════
+// ───────────────────────────────────────────────
 
 function getNotificationIcon(notification) {
   const type = String(notification?.type || '').toLowerCase();
@@ -1732,37 +2602,17 @@ function getNotificationTitle(notification) {
   return notification?.title || 'Notification';
 }
 
-function initNotificationUI() {
-  // The notification markup is part of index.html. Initialize it whenever the
-  // DOM is ready and again after authentication changes currentUser.
-  const wrap = document.getElementById('notification-wrap');
-  const bell = document.getElementById('notification-bell');
-  const panel = document.getElementById('notification-panel');
-  if (!wrap || !bell || !panel) return;
-
-  // Keep the wrapper in the topbar and make the bell visible for students.
-  if (!currentUser || currentUser.role !== 'admin') {
-    wrap.style.display = 'flex';
-  }
-
-  renderNotificationBell();
-}
-
 function renderNotificationBell() {
   const bell = document.getElementById('notification-bell');
   const countEl = document.getElementById('notification-count');
 
   if (!bell || !countEl) return;
 
-  const wrap = document.getElementById('notification-wrap');
-
   if (!currentUser || currentUser.role === 'admin') {
     bell.style.display = 'none';
-    if (wrap) wrap.style.display = 'none';
     return;
   }
 
-  if (wrap) wrap.style.display = 'flex';
   bell.style.display = 'flex';
 
   const notifications = getCurrentUserNotifications();
@@ -1798,7 +2648,7 @@ function renderNotificationPanel() {
     );
     const title = escapeHtml(getNotificationTitle(n));
     const icon = getNotificationIcon(n);
-    const score = Number(n.score ?? n.matchScore);
+    const score = Number(n.matchScore ?? n.score ?? n.aiScore ?? 0);
     const type = String(n.type || '').toLowerCase();
     const isMatch = type === 'match_found' || type.includes('match');
     const isReturn =
@@ -1831,7 +2681,7 @@ function renderNotificationPanel() {
             ${
               isMatch && foundId
                 ? `<button class="btn btn-sm btn-primary"
-                    onclick="openNotificationMatch('${id}', '${foundId}')">
+                    onclick="openNotificationMatch('${id}', '${foundId}', '${escapeHtml(String(n.lostItemId || ''))}')">
                     Review Match
                   </button>`
                 : ''
@@ -1863,12 +2713,10 @@ function renderNotificationPanel() {
   renderNotificationBell();
 }
 
-function toggleNotificationPanel(event) {
-  if (event) event.stopPropagation();
+function toggleNotificationPanel() {
   const panel = document.getElementById('notification-panel');
-  if (!panel || !currentUser || currentUser.role === 'admin') return;
+  if (!panel) return;
 
-  renderNotificationPanel();
   const willOpen = !panel.classList.contains('open');
 
   document.querySelectorAll('.notification-panel.open')
@@ -1957,32 +2805,200 @@ function markAllNotificationsRead() {
   }
 }
 
-function openNotificationMatch(notificationId, foundItemId) {
+function openNotificationMatch(notificationId, foundItemId, lostItemId) {
+  const notification = getCurrentUserNotifications().find(
+    item => String(item.id) === String(notificationId)
+  );
   markNotificationRead(notificationId);
 
   const panel = document.getElementById('notification-panel');
   if (panel) panel.classList.remove('open');
 
-  if (foundItemId) {
-    showClaimPrompt(foundItemId);
+  if (!foundItemId) return;
+
+  // Admin-confirmed alerts must open the exact pair that the admin approved,
+  // never a freshly ranked list of unrelated reports.
+  const exactLostId = lostItemId || notification?.lostItemId || '';
+  const notificationType = String(notification?.type || '').toLowerCase();
+  if (exactLostId && (notificationType === 'match_confirmed' || notificationType === 'match_found' || notificationType.includes('match'))) {
+    showConfirmedMatchPrompt(notificationId, foundItemId, exactLostId, notification);
+    return;
+  }
+
+  showClaimPrompt(foundItemId);
+}
+
+function showConfirmedMatchPrompt(notificationId, foundItemId, lostItemId, notification = {}) {
+  if (!currentUser || currentUser.role === 'admin') return;
+  const found = (DB.get('found_items') || []).find(item => String(item.id) === String(foundItemId));
+  const lost = (DB.get('lost_items') || []).find(item => String(item.id) === String(lostItemId));
+  if (!found || !lost || String(lost.userId) !== String(currentUser.id)) {
+    toast('This confirmed match is not linked to your lost-item report. Please refresh your reports or contact the Admin Office.', 'error');
+    return;
+  }
+
+  const scoreValue = Number(notification.score ?? notification.matchScore ?? 0);
+  const score = Number.isFinite(scoreValue) ? Math.max(0, Math.min(100, Math.round(scoreValue))) : 0;
+  const body = document.getElementById('modal-body');
+  const title = document.getElementById('modal-title');
+  if (!body || !title) return;
+  title.textContent = 'Admin-confirmed match';
+  body.innerHTML = `
+    <div class="confirmed-match-notice" role="status">
+      <strong>✓ Confirmed by TraceMate Admin</strong>
+      <p>The Admin selected this exact pair. No other lost items are shown here.</p>
+    </div>
+    <div class="match-card match-card-claim">
+      <div class="match-score">${score}% match score</div>
+      <div class="admin-compare-grid" style="margin-top:12px;">
+        ${renderClaimCompareCard(found, 'Found Item')}
+        ${renderClaimCompareCard(lost, 'Your Lost Item', score)}
+      </div>
+      <div class="claim-compare-actions" style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-success" type="button" onclick="approveConfirmedMatch('${escapeHtml(String(notificationId))}','${escapeHtml(String(lostItemId))}','${escapeHtml(String(foundItemId))}',${score})">Approve Match</button>
+        <button class="btn btn-danger" type="button" onclick="rejectConfirmedMatch('${escapeHtml(String(notificationId))}','${escapeHtml(String(lostItemId))}','${escapeHtml(String(foundItemId))}')">Reject Match</button>
+      </div>
+    </div>`;
+  document.getElementById('item-modal')?.classList.add('show');
+}
+
+function approveConfirmedMatch(notificationId, lostId, foundId, score) {
+  if (!currentUser || currentUser.role === 'admin') return;
+  const lost = (DB.get('lost_items') || []).find(item => String(item.id) === String(lostId));
+  if (!lost || String(lost.userId) !== String(currentUser.id)) {
+    toast('You can only approve a match for your own lost-item report.', 'error');
+    return;
+  }
+  const claims = DB.get('claims') || [];
+  const existing = claims.find(claim => String(claim.lostItemId) === String(lostId) && String(claim.foundItemId) === String(foundId));
+  if (existing) {
+    if (existing.status === 'rejected') {
+      toast('This match was already rejected. Contact the Admin Office if this was a mistake.', 'error');
+      return;
+    }
+    existing.lostReporterApproved = true;
+    existing.status = 'approved';
+    existing.ownerRespondedAt = new Date().toISOString();
+    existing.notes = 'Owner approved the exact admin-confirmed match';
+    DB.set('claims', claims);
+    closeModal('item-modal');
+    toast('Your approval has been recorded for this exact match.', 'success');
+  } else {
+    submitClaim(lostId, foundId, score);
+  }
+  markNotificationMatchAction(notificationId, 'approved');
+}
+
+function rejectConfirmedMatch(notificationId, lostId, foundId) {
+  if (!currentUser || currentUser.role === 'admin') return;
+  const lost = (DB.get('lost_items') || []).find(item => String(item.id) === String(lostId));
+  if (!lost || String(lost.userId) !== String(currentUser.id)) {
+    toast('You can only reject a match for your own lost-item report.', 'error');
+    return;
+  }
+  if (!confirm('Reject this admin-confirmed match? The Admin will need to review the decision.')) return;
+  const claims = DB.get('claims') || [];
+  let claim = claims.find(item => String(item.lostItemId) === String(lostId) && String(item.foundItemId) === String(foundId));
+  if (!claim) {
+    claim = { id: genId(), lostItemId: lostId, foundItemId: foundId, claimantId: currentUser.id, date: today(), status: 'rejected', score: 0, lostReporterApproved: false, foundReporterApproved: false, notes: 'Rejected by lost-item owner after admin-confirmed match review' };
+    claims.push(claim);
+  } else {
+    claim.status = 'rejected';
+    claim.notes = 'Rejected by lost-item owner after admin-confirmed match review';
+  }
+  DB.set('claims', claims);
+  markNotificationMatchAction(notificationId, 'rejected');
+  closeModal('item-modal');
+  toast('Match rejected. The decision has been recorded.', 'success');
+  updateBadges();
+  refreshDashboard();
+}
+
+function markNotificationMatchAction(notificationId, action) {
+  const users = DB.get('users') || [];
+  const owner = users.find(user => String(user.id) === String(currentUser?.id));
+  const notification = owner?.notifications?.find(item => String(item.id) === String(notificationId));
+  if (notification) {
+    notification.matchAction = action;
+    notification.matchActionAt = new Date().toISOString();
+    notification.read = true;
+    notification.message = action === 'approved'
+      ? 'You approved the admin-confirmed match. Please collect the item from the Admin Office after identity verification.'
+      : 'You rejected this proposed match. The Admin Office should review it before proceeding.';
+    DB.set('users', users);
+    currentUser.notifications = owner.notifications;
+    renderNotifications();
+    renderNotificationPanel();
+    renderNotificationBell();
   }
 }
 
-// ═══════════════════════════════════════════════
+// ───────────────────────────────────────────────
 //  UTILITIES
-// ═══════════════════════════════════════════════
-function getCatEmoji(cat) {
-  const map = { electronics: '📱', documents: '📄', accessories: '👜', clothing: '👗', keys: '🔑', books: '📚', other: '📦' };
-  return map[cat] || '📦';
+// ───────────────────────────────────────────────
+function getCatEmoji(cat, itemName = '') {
+  const text = `${cat || ''} ${itemName || ''}`.toLowerCase();
+
+  const icons = [
+    [/\b(umbrella|umbrellas|chhata)\b/, '&#x2602;&#xFE0F;'],
+    [/\b(pendrive|pen drive|usb drive|flash drive)\b/, '&#x1F4BE;'],
+    [/\b(ballpoint pen|ball pen|black pen|blue pen|pen|pencil)\b/, '&#x1F58A;&#xFE0F;'],
+    [/\b(smart ?watch|watch|wristwatch)\b/, '&#x231A;'],
+    [/\b(charger|charging cable|usb cable)\b/, '&#x1F50C;'],
+    [/\b(earphones|earbuds|headphones|headset)\b/, '&#x1F3A7;'],
+    [/\b(wallet|purse)\b/, '&#x1F45B;'],
+    [/\b(backpack|schoolbag|skybag|bag)\b/, '&#x1F392;'],
+    [/\b(book|notebook|textbook)\b/, '&#x1F4DA;'],
+    [/\b(keys|key)\b/, '&#x1F511;'],
+    [/\b(id card|identity card|college card)\b/, '&#x1FAAA;'],
+    [/\b(laptop|computer)\b/, '&#x1F4BB;'],
+    [/\b(water bottle|bottle)\b/, '&#x1F9F4;'],
+    [/\b(mobile stand|phone stand|phone holder)\b/, '&#x1F4F1;'],
+    [/\b(phone|mobile|smartphone|iphone)\b/, '&#x1F4F1;'],
+    [/\b(glasses|spectacles|eyeglasses)\b/, '&#x1F453;'],
+    [/\b(ring)\b/, '&#x1F48D;'],
+    [/\b(shoes|shoe|sneakers)\b/, '&#x1F45F;']
+  ];
+
+  for (const [pattern, icon] of icons) {
+    if (pattern.test(text)) return icon;
+  }
+
+  const categories = {
+    electronics: '&#x1F50C;',
+    documents: '&#x1F4C4;',
+    accessories: '&#x1F392;',
+    clothing: '&#x1F455;',
+    keys: '&#x1F511;',
+    books: '&#x1F4DA;',
+    other: '&#x1F4E6;'
+  };
+
+  return categories[String(cat || '').toLowerCase()] || categories.other;
 }
 function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 
 function toast(msg, type = '') {
   const el = document.createElement('div');
   el.className = `toast ${type}`;
-  const icons = { success: '✅', error: '❌', info: '💡', '': '📢' };
-  el.innerHTML = `${icons[type] || '📢'} ${msg}`;
-  document.getElementById('toast-container').appendChild(el);
+
+  const icons = {
+    success: '\u2705',
+    error: '\u274C',
+    info: '\u{1F4A1}',
+    '': '\u{1F4E2}'
+  };
+  const icon = icons[type] || icons[''];
+  const message = document.createElement('span');
+  message.textContent = String(msg ?? '');
+  el.append(document.createTextNode(`${icon} `), message);
+
+  const container = document.getElementById('toast-container');
+  if (!container) {
+    console.warn('TraceMate toast container was not found:', msg);
+    return;
+  }
+  container.appendChild(el);
   setTimeout(() => el.remove(), 3500);
 }
 
@@ -2004,15 +3020,3 @@ function toast(msg, type = '') {
     }
   });
 })();
-
-
-// Notification UI safety initialization. This covers direct page loads,
-// login transitions, and browsers serving a cached version of the app.
-function scheduleNotificationUIInit() {
-  initNotificationUI();
-  setTimeout(initNotificationUI, 250);
-  setTimeout(initNotificationUI, 1000);
-}
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', scheduleNotificationUIInit);

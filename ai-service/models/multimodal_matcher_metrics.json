@@ -1,0 +1,21 @@
+{
+  "created_at_utc": "2026-11-01T10:00:33.427186+00:00",
+  "dataset": "dataset-tools/matching-data/multimodal_pair_features.csv",
+  "rows": 10000,
+  "train_rows": 8000,
+  "test_rows": 2000,
+  "accuracy": 1.0,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "roc_auc": 1.0,
+  "feature_columns": [
+    "mobilenet_cosine",
+    "category_match",
+    "color_similarity",
+    "brightness_similarity",
+    "aspect_ratio_similarity"
+  ],
+  "target_column": "match",
+  "limitation": "Controlled category-level pair labels; 100% held-out scores indicate this dataset is too easy/leaky for real-world lost/found identity claims. Not calibrated and not wired into runtime matching automatically."
+}

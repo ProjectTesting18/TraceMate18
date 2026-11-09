@@ -1,7 +1,11 @@
 const AI_SERVICE_URL =
   process.env.AI_SERVICE_URL || 'http://127.0.0.1:8001';
 
-async function requestTextSimilarity(text1, text2, timeoutMs = 8000) {
+async function requestTextSimilarity(
+  text1,
+  text2,
+  timeoutMs = Number(process.env.NLP_TIMEOUT_MS) || 45000
+) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
