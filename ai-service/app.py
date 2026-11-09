@@ -1,5 +1,9 @@
 from contextlib import asynccontextmanager
-from services.lostnet_classifier import classify_image
+from services.lostnet_classifier import (
+    classify_image,
+    get_lostnet_status,
+    start_lostnet_warmup,
+)
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from pydantic import BaseModel
@@ -30,6 +34,7 @@ async def lifespan(app: FastAPI):
     )
     start_nlp_model_warmup()
     start_visual_model_warmup()
+    start_lostnet_warmup()
     yield
 
 
@@ -77,7 +82,10 @@ def health():
             "MobileNetV2 image embeddings",
             "CLIP image embeddings",
             "Hybrid visual similarity",
+            "LostNet trained object classifier",
         ],
+
+        "lostnet": get_lostnet_status(),
 
         "nlp": get_nlp_status(),
 
