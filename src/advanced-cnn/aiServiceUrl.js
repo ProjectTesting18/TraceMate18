@@ -11,9 +11,10 @@ let cachedUrl = null;
 let resolving = null;
 
 function normalizeBaseUrl(value) {
-  const raw = String(value || '').trim().replace(/\\/+$/, '');
+  let raw = String(value || '').trim();
+  while (raw.endsWith('/')) raw = raw.slice(0, -1);
   if (!raw) return '';
-  return /^[a-z][a-z0-9+.-]*:\\/\\//i.test(raw) ? raw : 'http://' + raw;
+  return raw.includes('://') ? raw : 'http://' + raw;
 }
 
 async function resolveAIServiceUrl() {
