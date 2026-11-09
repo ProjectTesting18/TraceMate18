@@ -37,7 +37,8 @@ _TRANSFORM = transforms.Compose([
 ])
 
 _MODEL = None
-_LOCK = Lock()
+_MODEL_LOCK = Lock()
+_STATE_LOCK = Lock()
 _LOADING = False
 _LOAD_ATTEMPTED = False
 _LOAD_ERROR = None
@@ -47,7 +48,7 @@ def _get_model():
     global _MODEL
 
     if _MODEL is None:
-        with _LOCK:
+        with _MODEL_LOCK:
             if _MODEL is None:
                 if not MODEL_PATH.is_file():
                     raise FileNotFoundError(
@@ -109,7 +110,7 @@ def _warmup_worker():
     except Exception as exc:
         error = str(exc)
     finally:
-        with _LOCK:
+        with _STATE_LOCK:
             _LOAD_ERROR = error
             _LOAD_ATTEMPTED = True
             _LOADING = False
@@ -119,7 +120,7 @@ def start_lostnet_warmup() -> None:
     """Load the trained LostNet checkpoint automatically after API startup."""
     global _LOADING
 
-    with _LOCK:
+    with _STATE_LOCK:
         if _MODEL is not None or _LOAD_ATTEMPTED or _LOADING:
             return
         _LOADING = True
@@ -132,7 +133,7 @@ def start_lostnet_warmup() -> None:
 
 
 def get_lostnet_status() -> dict:
-    with _LOCK:
+    with _STATE_LOCK:
         return {
             "model": "LostNet-MobileNetV2-CBAM",
             "checkpoint": MODEL_PATH.name,
