@@ -1,8 +1,7 @@
 ﻿
 'use strict';
 
-const AI_SERVICE_URL =
-  process.env.AI_SERVICE_URL || 'http://127.0.0.1:8001';
+const { resolveAIServiceUrl } = require('./aiServiceUrl');
 
 /**
  * Convert a supported image data URL into multipart form data.
@@ -56,7 +55,8 @@ async function postImageForm(endpoint, form, timeoutMs = 30000) {
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(`${AI_SERVICE_URL}${endpoint}`, {
+    const baseUrl = await resolveAIServiceUrl();
+    const response = await fetch(`${baseUrl}${endpoint}`, {
       method: 'POST',
       body: form,
       signal: controller.signal
