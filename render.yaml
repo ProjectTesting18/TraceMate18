@@ -5,7 +5,8 @@ services:
   - type: web
     name: tracemate-web
     runtime: node
-    plan: starter
+    plan: 0.5c-512mb
+    region: oregon
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health
@@ -31,7 +32,7 @@ services:
   - type: pserv
     name: tracemate-ai
     runtime: python
-    plan: pro
+    plan: 2c-4g
     region: oregon
     rootDir: ai-service
     buildCommand: pip install --upgrade pip && pip install -r requirements.txt
@@ -54,3 +55,7 @@ services:
         value: /var/data/torch
       - key: TOKENIZERS_PARALLELISM
         value: "false"
+      - key: WEB_CONCURRENCY
+        value: "1"
+      - key: OMP_NUM_THREADS
+        value: "2"
