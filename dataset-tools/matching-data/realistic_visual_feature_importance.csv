@@ -1,0 +1,6 @@
+feature,importance
+brightness_similarity,0.33114299285756477
+color_similarity,0.3296494903695918
+mobilenet_cosine,0.30110831283843675
+category_match,0.03790134447292274
+aspect_ratio_similarity,0.00019785946148414023

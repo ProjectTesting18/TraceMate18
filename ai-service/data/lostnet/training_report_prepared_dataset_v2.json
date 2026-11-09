@@ -1,0 +1,29 @@
+{
+  "created_at_utc": "2026-11-01T12:46:38.737444+00:00",
+  "dataset_source": "D:\\tracemate og full\\dataset-tools\\training-data",
+  "dataset_classes": [
+    "USBflashdisk",
+    "bag",
+    "book",
+    "card",
+    "earphone",
+    "key",
+    "lipstick",
+    "phone",
+    "umbrella",
+    "vacuumcup"
+  ],
+  "train_images": 3179,
+  "validation_images": 679,
+  "test_images": 691,
+  "epochs_requested": 15,
+  "batch_size": 16,
+  "learning_rate": 0.0001,
+  "best_validation_accuracy_percent": 98.8217967599411,
+  "held_out_test_loss": 0.0494399279400522,
+  "held_out_test_accuracy_percent": 98.84225759768451,
+  "base_checkpoint": "96.8cbam_finetuned_best.pth",
+  "best_checkpoint": "96.8cbam_prepared_dataset_v2_best.pth",
+  "final_checkpoint": "96.8cbam_prepared_dataset_v2.pth",
+  "note": "This is a 10-class lost-item object-category classifier, not a same-physical-item matching model. The held-out split is image-level and may not measure real-world lost/found matching accuracy."
+}

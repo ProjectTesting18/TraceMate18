@@ -3,6 +3,40 @@
 //  TraceMate – Smart Lost & Found Campus App
 // ═══════════════════════════════════════════════
 
+function formatAdminImageSimilarity(value, options = {}, legacyHasFoundPhoto) {
+  // Support object options and the legacy positional booleans.
+  const photoOptions = typeof options === 'boolean'
+    ? { hasLostPhoto: options, hasFoundPhoto: legacyHasFoundPhoto !== false }
+    : (options || {});
+  const { hasLostPhoto = true, hasFoundPhoto = true } = photoOptions;
+  if (!hasLostPhoto && !hasFoundPhoto) return 'No photos provided';
+  if (!hasLostPhoto) return 'No photo on lost report';
+  if (!hasFoundPhoto) return 'No photo on found report';
+  if (value === null || value === undefined || value === '') return 'Image similarity unavailable';
+  const score = Number(value);
+  if (!Number.isFinite(score)) return 'Image similarity unavailable';
+  const percentage = score >= 0 && score <= 1 ? score * 100 : score;
+  return `${percentage.toFixed(1)}%`;
+}
+
+// A low-confidence visual prediction warrants review, but does not by itself
+// prove that object identity is unresolved. Apply the defensive score cap only
+// when the payload explicitly says object-type evidence is unresolved/zero.
+function requiresVisualIdentityScoreCap(match = {}) {
+  const reasons = [
+    ...(Array.isArray(match.reviewReasons) ? match.reviewReasons : []),
+    ...(Array.isArray(match.reasons) ? match.reasons : []),
+    ...(Array.isArray(match.warnings) ? match.warnings : [])
+  ];
+  return reasons.some(reason => /object type evidence is unresolved|object type similarity is 0/i.test(String(reason)));
+}
+
+function effectiveCandidateScore(match = {}) {
+  const raw = Number(match.score ?? match.matchScore ?? match.aiScore ?? 0);
+  if (!Number.isFinite(raw)) return 0;
+  return requiresVisualIdentityScoreCap(match) ? Math.min(raw, 69) : raw;
+}
+
 function renderAdmin() {
   const users = DB.get('users') || [];
   const lost = DB.get('lost_items') || [];
@@ -861,12 +895,12 @@ function adminDelete(id, type) {
       ? 'lost_items'
       : 'found_items';
 
-  DB.set(
-    key,
-    (DB.get(key) || []).filter(
-      i => i.id !== id
-    )
-  );
+  try {
+    DB.removeItem(key, id);
+  } catch (error) {
+    toast(error.message || 'Could not delete item', 'error');
+    return;
+  }
 
   toast(
     'Item deleted',
@@ -1569,24 +1603,81 @@ async function receiveFoundItem(foundId) {
 
 async function showAIMatches(foundId) {
   try {
-    const data =
-      await adminApi(
-        `/api/matches/admin/found/${foundId}`
+
+    console.log(
+      '[TraceMate] Loading AI matches:',
+      foundId
+    );
+
+    const token =
+      typeof getAuthToken === 'function'
+        ? getAuthToken()
+        : '';
+
+    const response =
+      await fetch(
+        `/api/matches/admin/found/${encodeURIComponent(foundId)}`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization:
+              `Bearer ${token}`
+          }
+        }
       );
+
+    const data =
+      await response.json();
+
+    console.log(
+      '[TraceMate] AI API response:',
+      data
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        data?.error ||
+        data?.message ||
+        `Request failed (${response.status})`
+      );
+    }
+
+    const matches =
+      Array.isArray(data?.data)
+        ? data.data
+        : [];
+
+    console.log(
+      '[TraceMate] AI MATCH COUNT:',
+      matches.length
+    );
+
+    if (matches.length) {
+      console.log(
+        '[TraceMate] FIRST AI MATCH:',
+        matches[0]
+      );
+    }
 
     showAIMatchModal(
       foundId,
-      data.data || []
+      matches
     );
 
   } catch (err) {
+
+    console.error(
+      '[TraceMate] AI match request failed:',
+      err
+    );
+
     toast(
-      err.message,
+      err?.message ||
+      'Unable to load AI matches.',
       'error'
     );
   }
 }
-
 
 // ═══════════════════════════════════════════════════════════════════════
 // AI MATCH MODAL
@@ -1596,6 +1687,20 @@ function showAIMatchModal(
   foundId,
   matches
 ) {
+  /*
+   * Found item currently being inspected.
+   *
+   * This belongs to showAIMatchModal() scope because the
+   * Possible High Matches summary and every candidate card
+   * both need to know which found item is being matched.
+   */
+  const foundItem =
+    DB.get('found_items').find(
+      item => item.id === foundId
+    ) || {};
+
+  window.__traceMateCurrentFoundItemStatus = String(foundItem.status || '').toLowerCase();
+
   let modal =
     document.getElementById(
       'ai-match-modal'
@@ -1713,6 +1818,35 @@ function showAIMatchModal(
     return;
   }
 
+  // Decode entity-encoded legacy values as plain text (never parse them as HTML).
+  // Numeric entities may be nested, e.g. &amp;#x53;ame or &amp;amp;#x53;ame.
+  const decodeLegacyHtmlEntities = value => {
+    let decoded = String(value ?? '');
+    const namedEntities = {
+      amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0',
+      colon: ':', sol: '/', period: '.', comma: ',', hyphen: '-', ndash: '\u2013',
+      mdash: '\u2014', rsquo: '\u2019', lsquo: '\u2018', rdquo: '\u201d',
+      ldquo: '\u201c', bull: '\u2022', hellip: '\u2026', copy: '\u00a9',
+      reg: '\u00ae', trade: '\u2122', pound: '\u00a3', euro: '\u20ac'
+    };
+    const decodePass = text => text
+      .replace(/&#(?:x([0-9a-f]{1,8})|(\d{1,10}));?/gi, (whole, hex, decimal) => {
+        const cp = Number.parseInt(hex || decimal, hex ? 16 : 10);
+        if (!Number.isFinite(cp) || cp < 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return whole;
+        try { return String.fromCodePoint(cp); } catch { return whole; }
+      })
+      .replace(/&([a-z][a-z0-9]+);/gi, (whole, name) => {
+        const replacement = namedEntities[name.toLowerCase()];
+        return replacement === undefined ? whole : replacement;
+      });
+    for (let pass = 0; pass < 12; pass += 1) {
+      const next = decodePass(decoded);
+      if (next === decoded) break;
+      decoded = next;
+    }
+    return decoded;
+  };
+
   if (
     !Array.isArray(matches) ||
     !matches.length
@@ -1748,7 +1882,122 @@ function showAIMatchModal(
 
   } else {
 
+    /*
+     * ---------------------------------------------------------
+     * POSSIBLE HIGH MATCH SUMMARY
+     * ---------------------------------------------------------
+     *
+     * 80%+ is treated as a UI high-match threshold.
+     * This is NOT model accuracy.
+     *
+     * The admin sees exactly:
+     *
+     * Lost item -> Found item -> Score
+     */
+
+    const highMatches =
+      matches
+        .filter(match => effectiveCandidateScore(match) >= 80)
+        .map(match => {
+
+          const lostItem =
+            match?.lostItem || {};
+
+          return {
+            lostName:
+              decodeLegacyHtmlEntities(lostItem.name || lostItem.itemName || 'Unnamed lost item'),
+
+            foundName:
+              decodeLegacyHtmlEntities(foundItem.name || foundItem.itemName || 'Unnamed found item'),
+
+            score: effectiveCandidateScore(match)
+          };
+        });
+
+    const highMatchSummary =
+      highMatches.length
+        ? `
+          <section
+            style="
+              margin-bottom:18px;
+              padding:16px;
+              border-radius:14px;
+              border:1px solid rgba(16,185,129,.25);
+              background:rgba(16,185,129,.06);
+            "
+          >
+
+            <div
+              style="
+                font-weight:800;
+                font-size:15px;
+                margin-bottom:10px;
+              "
+            >
+              🔥 Possible High Matches
+            </div>
+
+            <div
+              style="
+                font-size:12px;
+                color:var(--gray3);
+                margin-bottom:10px;
+              "
+            >
+              These candidates scored 80% or higher.
+            </div>
+
+            ${highMatches.map(match => `
+              <div
+                style="
+                  display:flex;
+                  justify-content:space-between;
+                  align-items:center;
+                  gap:12px;
+                  padding:10px 0;
+                  border-top:1px solid rgba(0,0,0,.07);
+                "
+              >
+
+                <div>
+
+                  <strong>
+                    ${escapeHtml(match.lostName)}
+                  </strong>
+
+                  <span
+                    style="
+                      margin:0 7px;
+                      font-size:16px;
+                    "
+                  >
+                    →
+                  </span>
+
+                  <strong>
+                    ${escapeHtml(match.foundName)}
+                  </strong>
+
+                </div>
+
+                <span
+                  style="
+                    font-weight:800;
+                    white-space:nowrap;
+                  "
+                >
+                  ${match.score}%
+                </span>
+
+              </div>
+            `).join('')}
+
+          </section>
+        `
+        : '';
+
     body.innerHTML =
+      highMatchSummary +
       matches.map(m => {
 
         const l =
@@ -1763,6 +2012,7 @@ function showAIMatchModal(
          * ───────────────────────────────────────
          */
         const nlpScore =
+          m.pythonNlpScore ??
           m.nlpSimilarity ??
           m.nlpSimilarityPercentage ??
           m.nlp_similarity ??
@@ -1901,11 +2151,47 @@ function showAIMatchModal(
             0
           );
 
-        const score =
-          Number(
-            m.score ??
-            0
-          );
+        const audit = m.scoreAudit || {};
+        const auditNum = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
+        const componentSubtotal = [categoryScore, nameScore, descriptionScore, locationScore, dateScore, propertyContribution, imageLabelContribution, cnnContribution].reduce((sum, value) => sum + value, 0);
+        const capReasons = Array.isArray(audit.recommendedScoreCapReasons)
+          ? audit.recommendedScoreCapReasons.filter(Boolean)
+          : [];
+        const capReasonsHtml = capReasons.length
+          ? `<br><strong>Why this score cap applies:</strong><ul style="margin:4px 0 4px 18px;padding:0;">${capReasons.map(reason => `<li>${escapeHtml(decodeLegacyHtmlEntities(String(reason)))}</li>`).join('')}</ul>`
+          : '';
+        const scoreAuditHtml = `
+          <div class="ai-score-help" style="margin-top:10px;padding:10px;border-radius:8px;background:rgba(127,127,127,.08);">
+            <strong>Score calculation (audit)</strong><br>
+            Evidence components: ${componentSubtotal}/100<br>
+            Shared-text boost: +${auditNum(audit.sharedTextBoost)} · Location boost: +${auditNum(audit.locationContextBoost)}<br>
+            Visual contradiction penalty: −${auditNum(audit.visualContradictionPenalty)}<br>
+            Visual evidence factor: ${audit.visualEvidenceFactor == null ? 'not applied' : `${(auditNum(audit.visualEvidenceFactor) * 100).toFixed(1).replace(/\.0$/, '')}%`}<br>
+            Raw score before base policy cap: ${audit.scoreBeforeRecommendedCap == null ? 'not supplied' : Math.round(auditNum(audit.scoreBeforeRecommendedCap))}<br>
+            Base matcher score after its cap: ${audit.baseMatcherScoreAfterCap == null ? (audit.advancedScore == null ? 'not supplied' : Math.round(auditNum(audit.advancedScore))) : Math.round(auditNum(audit.baseMatcherScoreAfterCap))}<br>
+            External NLP adjustment: ${audit.pythonNlpAdjustment == null ? '0' : (auditNum(audit.pythonNlpAdjustment) > 0 ? '+' : '') + auditNum(audit.pythonNlpAdjustment)}<br>
+            Hybrid pre-final-cap calculation (uncapped base score + NLP adjustment): ${audit.scoreBeforeRecommendedCap == null ? 'not supplied' : Math.round(auditNum(audit.scoreBeforeRecommendedCap))} ${auditNum(audit.pythonNlpAdjustment ?? 0) >= 0 ? '+' : '−'} ${Math.abs(auditNum(audit.pythonNlpAdjustment ?? 0))} = ${audit.scoreBeforeFinalCap == null ? 'not supplied' : Math.round(auditNum(audit.scoreBeforeFinalCap))}<br>
+            <span class="audit-note">The base matcher cap shown above is diagnostic; the hybrid score uses the uncapped base score and applies the final recommended cap to the combined result.</span><br>
+            Final recommended cap: ${audit.recommendedScoreCap == null ? 'not supplied' : Math.round(auditNum(audit.recommendedScoreCap))}${capReasonsHtml}<br>
+            Final score: ${audit.finalScore == null ? 'not supplied' : Math.round(auditNum(audit.finalScore))}
+          </div>`;
+
+        const rawScore = Number(m.score ?? 0);
+        // Defensive presentation guard: candidate payloads produced by an
+        // older/stale matching module may carry a high score while the
+        // evidence shown below reports Object Type = 0% and low-confidence
+        // visual predictions. Never render that combination as a high match.
+        const scorePropertyBreakdown = m.propertyBreakdown || {};
+        const displayedObjectTypeScore = Number(scorePropertyBreakdown.objectType ?? 0);
+        const scoreReviewReasons = Array.isArray(m.reviewReasons) ? m.reviewReasons : [];
+        const lowConfidenceObjectWarning = Boolean(
+          m.reviewRecommended || m.manualReviewRequired ||
+          scoreReviewReasons.some(reason => /low-confidence visual object|object type evidence is unresolved|object type similarity is 0/i.test(String(reason)))
+        );
+        const explicitVisualIdentityWarning = requiresVisualIdentityScoreCap(m);
+        const objectTypeScoreCapped = (explicitVisualIdentityWarning ||
+          (displayedObjectTypeScore <= 0 && lowConfidenceObjectWarning)) && rawScore > 69;
+        const score = objectTypeScoreCapped ? 69 : rawScore;
 
         /*
          * Confidence is match-engine confidence,
@@ -1913,14 +2199,9 @@ function showAIMatchModal(
          */
         const confidence =
           escapeHtml(
-            m.confidence ||
-            (
-              score >= 75
-                ? 'high'
-                : score >= 45
-                  ? 'medium'
-                  : 'low'
-            )
+            objectTypeScoreCapped
+              ? (score >= 75 ? 'high' : score >= 45 ? 'medium' : 'low')
+              : (m.confidence || (score >= 75 ? 'high' : score >= 45 ? 'medium' : 'low'))
           );
 
         const confidenceClass =
@@ -1937,12 +2218,18 @@ function showAIMatchModal(
               ).toFixed(1)}%`
             : 'Not available';
 
-        const imageDisplay =
-          imageScore !== null
-            ? `${Number(
-                imageScore
-              ).toFixed(1)}%`
-            : 'Not available';
+        const hasLostPhoto = Boolean(l.image || l.imageUrl || l.imageURL || l.photo || l.imageData);
+        const matchedFoundItem = m.foundItem || foundItem || {};
+        const hasFoundPhoto = Boolean(matchedFoundItem.image || matchedFoundItem.imageUrl || matchedFoundItem.imageURL || matchedFoundItem.photo || matchedFoundItem.imageData);
+        const imageDisplay = imageScore !== null && imageScore !== undefined
+          ? `${Number(imageScore).toFixed(1)}%`
+          : !hasLostPhoto && !hasFoundPhoto
+            ? 'No photos provided'
+            : !hasLostPhoto
+              ? 'No photo on lost report'
+              : !hasFoundPhoto
+                ? 'No photo on found report'
+                : 'Image similarity unavailable';
 
         const propertyDisplay =
           propertyScore !== null
@@ -1969,6 +2256,68 @@ function showAIMatchModal(
           )
             ? m.reasons
             : [];
+
+        const reviewRecommended = Boolean(
+          m.reviewRecommended || m.manualReviewRequired
+        );
+        const eligibleForConfirmation = String(foundItem.status || '').toLowerCase() === 'received_by_admin' &&
+          m.eligibleForConfirmation !== false &&
+          m.hardConflictCandidate !== true &&
+          m.identityConflict !== true &&
+          m.objectFamilyConflict !== true &&
+          m.objectConflict !== true;
+        const reviewReasons = Array.isArray(m.reviewReasons)
+          ? m.reviewReasons
+          : [];
+
+        // The banner already summarizes review reasons. Suppress duplicate
+        // warning entries in the detailed evidence list while retaining the
+        // distinct AI-estimated-color explanation and actual visual metrics.
+        const reviewWarningKinds = new Set();
+        for (const reviewReason of reviewReasons) {
+          const warningText = String(reviewReason || '').toLowerCase();
+          if (/primary color|color differs|color conflict|colour difference/.test(warningText)) reviewWarningKinds.add('color');
+          if (/low combined text similarity|low text similarity/.test(warningText)) reviewWarningKinds.add('text');
+          if (/low-confidence visual object|visual object prediction/.test(warningText)) reviewWarningKinds.add('object-confidence');
+          if (/scratch-like mark|scratch screening/.test(warningText)) reviewWarningKinds.add('scratch');
+        }
+        const evidenceReasons = reasons.filter(reason => {
+          const reasonText = decodeLegacyHtmlEntities(String(reason || '')).toLowerCase();
+          if (reviewWarningKinds.has('color') && /primary color differs|primary colour differs/.test(reasonText)) return false;
+          if (reviewWarningKinds.has('text') && /low combined text similarity|low text similarity/.test(reasonText)) return false;
+          if (reviewWarningKinds.has('object-confidence') && /low-confidence visual object prediction/.test(reasonText)) return false;
+          if (reviewWarningKinds.has('scratch') && /scratch-like mark screening:/.test(reasonText)) return false;
+          return true;
+        });
+
+        const scoreCap = Number(m.recommendedScoreCap);
+        // Do not display a stale 69% cap supplied by an older matcher when the
+        // only remaining issue is low classifier confidence and measured
+        // object-type evidence is positive. Keep unrelated caps (e.g. weak
+        // text or color conflicts) visible when they actually constrain score.
+        const staleVisualOnlyCap = displayedObjectTypeScore > 0 &&
+          !explicitVisualIdentityWarning &&
+          scoreReviewReasons.some(reason => /low-confidence visual object/i.test(String(reason))) &&
+          Number.isFinite(scoreCap) && scoreCap <= 69 && rawScore <= 69;
+        const effectiveScoreCap = objectTypeScoreCapped
+          ? Math.min(Number.isFinite(scoreCap) ? scoreCap : 100, 69)
+          : staleVisualOnlyCap ? 100 : scoreCap;
+        const scoreCapReasons = Array.isArray(m.scoreAudit?.recommendedScoreCapReasons)
+          ? m.scoreAudit.recommendedScoreCapReasons.filter(Boolean)
+          : [];
+        const scoreCapHtml = Number.isFinite(effectiveScoreCap) && effectiveScoreCap < 100
+          ? `<div style="margin-top:6px;font-size:12px;"><strong>Score limit applied:</strong> maximum candidate score ${effectiveScoreCap}%. ${scoreCapReasons.length ? scoreCapReasons.map(reason => escapeHtml(decodeLegacyHtmlEntities(String(reason)))).join(' ') : 'The matcher applied a conservative evidence-based score limit.'}</div>`
+          : '';
+        const reviewBannerHtml = reviewRecommended
+          ? `
+            <div role="status" style="margin:12px 0;padding:12px 14px;border:1px solid #eab308;border-radius:10px;background:rgba(234,179,8,.10);color:var(--text-color,#713f12);">
+              <strong>⚠ Manual review recommended</strong>
+              <div style="margin-top:4px;font-size:13px;">Some evidence is uncertain or inconsistent. Compare the original photos and report details; image similarity alone does not prove these are the same physical item.</div>
+              ${reviewReasons.length ? `<ul style="margin:6px 0 0 18px;padding:0;">${reviewReasons.map(reason => `<li>${escapeHtml(decodeLegacyHtmlEntities(String(reason)))}</li>`).join('')}</ul>` : ''}
+              ${scoreCapHtml}
+            </div>
+          `
+          : '';
 
         /*
          * ───────────────────────────────────────
@@ -2208,6 +2557,75 @@ function showAIMatchModal(
             class="ai-match-card"
           >
 
+            <!-- LOST -> FOUND RELATIONSHIP -->
+            <div
+              style="
+                margin-bottom:14px;
+                padding:12px 14px;
+                border-radius:12px;
+                background:rgba(15,23,42,.04);
+                border:1px solid rgba(15,23,42,.08);
+              "
+            >
+
+              <div
+                style="
+                  font-size:11px;
+                  font-weight:800;
+                  text-transform:uppercase;
+                  letter-spacing:.05em;
+                  color:var(--gray3);
+                  margin-bottom:8px;
+                "
+              >
+                🔗 Match Relationship
+              </div>
+
+              <div
+                style="
+                  display:flex;
+                  align-items:center;
+                  flex-wrap:wrap;
+                  gap:8px;
+                  font-size:14px;
+                "
+              >
+
+                <span>
+                  🔴
+                  <strong>Lost:</strong>
+                  ${escapeHtml(decodeLegacyHtmlEntities(
+                    l.name ||
+                    l.itemName ||
+                    'Unnamed lost item'
+                  ))}
+                </span>
+
+                <span
+                  style="
+                    font-size:18px;
+                    font-weight:700;
+                  "
+                >
+                  →
+                </span>
+
+                <span>
+                  🟢
+                  <strong>Possible Found:</strong>
+                  ${escapeHtml(decodeLegacyHtmlEntities(
+                    foundItem.name ||
+                    foundItem.itemName ||
+                    'Unnamed found item'
+                  ))}
+                </span>
+
+              </div>
+
+            </div>
+
+            ${reviewBannerHtml}
+
             <!-- HEADER -->
             <div class="
               ai-match-card-header
@@ -2220,22 +2638,22 @@ function showAIMatchModal(
                 <h4 class="
                   ai-match-title
                 ">
-                  ${escapeHtml(
+                  ${escapeHtml(decodeLegacyHtmlEntities(
                     l.name ||
                     l.itemName ||
                     'Unnamed lost item'
-                  )}
+                  ))}
                 </h4>
 
                 <div class="
                   ai-match-description
                 ">
-                  ${escapeHtml(
+                  ${escapeHtml(decodeLegacyHtmlEntities(
                     description.slice(
                       0,
                       300
                     )
-                  )}
+                  ))}
                 </div>
 
               </div>
@@ -2286,7 +2704,7 @@ function showAIMatchModal(
                 <div class="
                   ai-score-help
                 ">
-                  Text similarity
+                  NLP model similarity (separate from combined text score)
                 </div>
 
               </div>
@@ -2311,7 +2729,7 @@ function showAIMatchModal(
                 <div class="
                   ai-score-help
                 ">
-                  Image similarity
+                  Visual feature similarity; not proof of item identity
                 </div>
 
               </div>
@@ -2418,6 +2836,7 @@ function showAIMatchModal(
 
             </div>
 
+            ${scoreAuditHtml}
 
             <!-- PROPERTY DETAILS -->
             ${
@@ -2502,26 +2921,27 @@ function showAIMatchModal(
               </div>
 
               ${
-                reasons.length
-                  ? reasons
+                evidenceReasons.length
+                  ? evidenceReasons
                       .map(
-                        reason => `
-                          <div class="
-                            ai-reason
-                          ">
-                            <span class="
-                              ai-reason-check
-                            ">
-                              ✓
-                            </span>
+                        reason => {
+                          const reasonText = decodeLegacyHtmlEntities(String(reason));
+                          const isWarning = /\bwarning\b|low[- ]confidence|low (?:combined )?text similarity|text similarity.*manual review|color difference|color:.*\bvs\b|conflict|contradict|visual difference|mismatch|differs|unconfirmed|insufficient confidence|review required|manual review|heuristic|unresolved|score capped|cannot confirm|not proof/i.test(reasonText);
+                          const isVisualMetric = /visual ai similarity|mobilenetv2 visual similarity|clip visual similarity|fine visual detail similarity|ai shape similarity|ai colour structure similarity|ai local.region similarity|ai foreground geometry similarity/i.test(reasonText);
+                          const reasonClass = isWarning ? 'ai-reason-warning' : isVisualMetric ? 'ai-reason-muted' : '';
 
-                            <span>
-                              ${escapeHtml(
-                                reason
-                              )}
-                            </span>
-                          </div>
-                        `
+                          return `
+                            <div class="ai-reason ${reasonClass}">
+                              <span class="ai-reason-check">
+                                ${isWarning ? '⚠' : isVisualMetric ? 'ℹ' : '✓'}
+                              </span>
+
+                              <span>
+                                ${escapeHtml(reasonText)}
+                              </span>
+                            </div>
+                          `;
+                        }
                       )
                       .join('')
                   : `
@@ -2546,19 +2966,11 @@ function showAIMatchModal(
 
               <button
                 type="button"
-                class="
-                  btn
-                  btn-success
-                  ai-confirm-btn
-                "
-                onclick="
-                  confirmAIMatch(
-                    '${escapeHtml(foundId)}',
-                    '${escapeHtml(l.id)}'
-                  )
-                "
+                class="btn ${eligibleForConfirmation ? 'btn-success' : 'btn-secondary'} ai-confirm-btn"
+                ${eligibleForConfirmation ? '' : 'disabled aria-disabled="true" title="A hard identity/object conflict must be resolved before confirmation."'}
+                ${eligibleForConfirmation ? `onclick="confirmAIMatch('${escapeHtml(foundId)}','${escapeHtml(l.id)}')"` : ''}
               >
-                ✓ Confirm Match
+                ${eligibleForConfirmation ? '✓ Confirm Match' : '⚠ Review only — cannot confirm'}
               </button>
 
             </div>
@@ -2567,6 +2979,17 @@ function showAIMatchModal(
         `;
 
       }).join('');
+  }
+
+  if (String(foundItem.status || '').toLowerCase() !== 'received_by_admin' &&
+      String(foundItem.status || '').toLowerCase() !== 'matched') {
+    body.insertAdjacentHTML('afterbegin', `
+      <div role="status" class="ai-receipt-required" style="margin:0 0 14px;padding:12px 14px;border:1px solid #eab308;border-radius:10px;background:rgba(234,179,8,.10);">
+        <strong>📥 Physical receipt required</strong>
+        <p style="margin:5px 0 10px;">The admin office must record physical receipt before confirming a match.</p>
+        <button type="button" class="btn btn-primary" onclick="receiveFoundItem('${escapeHtml(foundId)}')">Record Receipt</button>
+      </div>
+    `);
   }
 
   /*
@@ -2670,6 +3093,17 @@ async function confirmAIMatch(
   foundId,
   lostId
 ) {
+  const foundItem = (DB.get('found_items') || []).find(
+    item => String(item.id) === String(foundId)
+  );
+  const foundStatus = String(
+    (foundItem && foundItem.status) || window.__traceMateCurrentFoundItemStatus || ''
+  ).toLowerCase();
+  if (foundStatus !== 'received_by_admin') {
+    toast('Record physical receipt of the found item before confirming a match.', 'error');
+    return;
+  }
+
   if (
     !confirm(
       'Confirm this match? The owner will be notified to collect the item from the Admin Office.'
@@ -2718,98 +3152,37 @@ async function confirmAIMatch(
 // RETURN MATCHED ITEM
 // ═══════════════════════════════════════════════════════════════════════
 
-async function returnMatchedItem(
-  foundId
-) {
-  /*
-   * Student ID is optional now.
-   *
-   * If the owner has a Student ID,
-   * admin can verify using it.
-   *
-   * If the owner does not have a Student ID,
-   * admin can verify using the registered email.
-   */
-
-  const studentId =
-    prompt(
-      'Enter the owner Student ID if available.\n\nLeave blank if the owner does not have a Student ID:'
-    );
-
-  if (studentId === null) {
+async function returnMatchedItem(foundId) {
+  const foundItem = (DB.get('found_items') || []).find(item => String(item.id) === String(foundId));
+  if (!foundItem || !foundItem.matchedLostItemId) {
+    toast('This item does not have a confirmed lost-item match.', 'error');
     return;
   }
+  const lostItem = (DB.get('lost_items') || []).find(item => String(item.id) === String(foundItem.matchedLostItemId));
+  const owner = lostItem ? (DB.get('users') || []).find(user => String(user.id) === String(lostItem.userId)) : null;
+  const ownerEmail = String(owner?.email || '').trim();
+  const ownerName = String(owner?.name || owner?.fullName || 'Registered owner').trim();
+  const details = `Return “${foundItem.name || 'Found item'}” to ${ownerName}${ownerEmail ? ` (${ownerEmail})` : ''}.\n\nConfirm that you have checked the person's identity in person and that this is the correct owner.`;
+  if (!confirm(details)) return;
 
-  let ownerEmail = '';
-
-  if (!studentId.trim()) {
-    ownerEmail =
-      prompt(
-        'Student ID not provided.\n\nEnter the owner registered email address after verifying it physically:'
-      );
-
-    if (ownerEmail === null) {
-      return;
-    }
-
-    ownerEmail =
-      ownerEmail.trim();
-
-    if (!ownerEmail) {
-      toast(
-        'Owner email is required when Student ID is not provided.',
-        'error'
-      );
-
-      return;
-    }
-  }
-
-  const notes =
-    prompt(
-      'Collection notes (optional):'
-    ) || '';
+  const enteredNotes = prompt('Collection note (optional):\nExample: Collected at Admin Office; item condition checked. Leave blank if not needed.', '');
+  if (enteredNotes === null) return;
 
   try {
-    await adminApi(
-      '/api/matches/admin/return',
-      {
-        method: 'POST',
-
-        body: JSON.stringify({
-          foundItemId:
-            foundId,
-
-          studentId:
-            studentId.trim(),
-
-          ownerEmail:
-            ownerEmail,
-
-          notes:
-            notes.trim()
-        })
-      }
-    );
-
+    await adminApi('/api/matches/admin/return', {
+      method: 'POST',
+      body: JSON.stringify({ foundItemId: foundId, notes: enteredNotes.trim() })
+    });
     closeAIMatchModal();
-
-    toast(
-      'Item returned to verified owner successfully.',
-      'success'
-    );
-
+    toast('Item marked as returned to the verified owner.', 'success');
     await renderAdminAIWorkflow();
-
     renderAdmin();
-
   } catch (err) {
-    toast(
-      err.message,
-      'error'
-    );
+    toast(err.message || 'Could not record item return.', 'error');
   }
-}// ═══════════════════════════════════════════════════════════════════════
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // ADMIN RENDER WRAPPER
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -3122,78 +3495,64 @@ function ensureAIModalCloseButton() {
 
 
 /* ---------------------------------------------------------
-   OBSERVE DYNAMIC MODAL CREATION
+   OBSERVE AND REPAIR AI MODAL TEXT ENTITIES
    --------------------------------------------------------- */
 
-if (
-  !window.__traceMateAIModalObserverBound
-) {
+// Decode legacy entity-encoded strings in text nodes only. The decoded value
+// is assigned to nodeValue, never parsed as HTML, so user content stays inert.
+function repairAIModalTextEntities() {
+  const modal = document.getElementById('ai-match-modal');
+  if (!modal) return;
 
-  window.__traceMateAIModalObserverBound =
-    true;
+  if (typeof ensureAIModalCloseButton === 'function') {
+    ensureAIModalCloseButton();
+  }
 
-  const aiModalObserver =
-    new MutationObserver(
-      function() {
-
-        const modal =
-          document.getElementById(
-            'ai-match-modal'
-          );
-
-        if (!modal) {
-          return;
-        }
-
-        ensureAIModalCloseButton();
-
-      }
-    );
-
-  aiModalObserver.observe(
-    document.body,
-    {
-      childList: true,
-      subtree: true
+  const decodeVisibleText = (input) => {
+    let value = String(input ?? '');
+    const decoder = document.createElement('textarea');
+    for (let pass = 0; pass < 12; pass += 1) {
+      decoder.innerHTML = value;
+      const next = decoder.value;
+      if (next === value) break;
+      value = next;
     }
-  );
+    return value;
+  };
+
+  const walker = document.createTreeWalker(modal, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+  for (const textNode of textNodes) {
+    const decoded = decodeVisibleText(textNode.nodeValue);
+    if (decoded !== textNode.nodeValue) {
+      textNode.nodeValue = decoded;
+    }
+  }
+}
+
+if (!window.__traceMateAIModalObserverBound) {
+  window.__traceMateAIModalObserverBound = true;
+
+  const aiModalObserver = new MutationObserver(() => {
+    repairAIModalTextEntities();
+  });
+
+  // Observe dynamic content updates and run an initial pass as well. The
+  // initial pass is important when the modal exists before this script loads
+  // and is merely shown later without any child-list mutation.
+  if (document.body) {
+    aiModalObserver.observe(document.body, {
+      childList: true,
+      characterData: true,
+      subtree: true
+    });
+  }
+  repairAIModalTextEntities();
 }
 
 
-/* ---------------------------------------------------------
-   PATCH showAIMatchModal
-   ---------------------------------------------------------
- *
- * We keep the original matching/modal renderer.
- * This wrapper only makes sure the close button is
- * definitely clickable after every render.
- */
-
-if (
-  !window.__traceMateAIModalShowPatched
-) {
-
-  window.__traceMateAIModalShowPatched =
-    true;
-
-  const originalShowAIMatchModal =
-    showAIMatchModal;
-
-  window.showAIMatchModal =
-    function(
-      foundId,
-      matches
-    ) {
-
-      originalShowAIMatchModal(
-        foundId,
-        matches
-      );
-
-      ensureAIModalCloseButton();
-
-    };
-}
 
 
 /* ---------------------------------------------------------

@@ -1,0 +1,4 @@
+# Optional visual-model support. Install only when wheels match your Python/OS.
+torch>=2.5.0
+torchvision>=0.20.0
+transformers>=4.45.0,<5.0.0

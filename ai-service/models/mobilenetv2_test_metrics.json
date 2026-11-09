@@ -1,0 +1,23 @@
+{
+  "test_loss": 0.2091345191001892,
+  "test_accuracy": 0.929088294506073,
+  "class_count": 10,
+  "classes": [
+    "USBflashdisk",
+    "bag",
+    "book",
+    "card",
+    "earphone",
+    "key",
+    "lipstick",
+    "phone",
+    "umbrella",
+    "vacuumcup"
+  ],
+  "image_size": [
+    224,
+    224
+  ],
+  "batch_size": 32,
+  "seed": 42
+}

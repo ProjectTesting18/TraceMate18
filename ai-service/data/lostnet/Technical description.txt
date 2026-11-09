@@ -1,0 +1,32 @@
+Front-end Part (Based on the Layui Framework):
+
+Users upload lost item images through the front-end web interface.
+The front-end is responsible for receiving user-uploaded images and transmitting them to the back-end Spring Boot service for processing.
+The Layui framework is employed to create a user-friendly web interface and for image upload functionality.
+
+Back-end Part (Based on the Spring Boot Framework):
+
+Spring Boot serves as the back-end to receive user-uploaded image data.
+Image data may require further processing, such as the application of perceptual hashing algorithms, to facilitate image matching. This can be used to find images in the database that are similar to the ones uploaded by the user.
+The back-end transfers image data to a deep learning model for online recognition. This part is implemented using Python, including technologies like Flask and PyTorch.
+The Python Flask application receives image data and invokes a pre-trained deep learning model for classification.
+The model returns recognition results to the back-end Spring Boot application.
+
+Deep Learning Model:
+
+In Python, an improved MobileNet V2 model is utilized to train a lost item category recognition model.
+During model training, annotated datasets are used to associate images with corresponding category labels.
+The trained model is saved and loaded within the Flask application for online inference.
+The model's output consists of probability scores for one or multiple categories, indicating the likelihood of the input image belonging to each category.
+
+Perceptual Hashing Algorithm:
+
+In the back-end, perceptual hashing algorithms may be employed to compute hash values or features for user-uploaded images, facilitating comparisons with images in the database.
+Hash values or features can be used for image matching to determine if user-uploaded images are similar to known lost item images.
+
+Returning Recognition Results:
+
+The back-end returns the classification results from the deep learning model, along with potential image matching results, to the front-end.
+The front-end can display classification and matching results, enabling users to view recognition information and potential matches for lost item images.
+
+The entire process involves collaboration between the front-end and back-end, with the front-end handling user interaction and image uploads, while the back-end is responsible for image processing, applying deep learning models, and potential image matching. This integration leverages the strengths of each domain to provide users with a powerful lost item recognition and matching system. Furthermore, the process encompasses knowledge from various disciplines, including computer vision and deep learning, to achieve efficient processing and recognition of lost item images.

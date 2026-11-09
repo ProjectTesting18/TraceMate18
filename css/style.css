@@ -1745,3 +1745,463 @@ tr:last-child td { border-bottom: none; }
     grid-template-columns: 1fr;
   }
 }
+
+/* ==========================================================
+   TRACEMATE RESPONSIVE LAYOUT PATCH
+   Mobile-first overflow, content sizing, forms, cards and modals
+   ========================================================== */
+
+html {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+  -webkit-text-size-adjust: 100%;
+}
+
+body, #app, .main, .page {
+  min-width: 0;
+  max-width: 100%;
+}
+
+img, video, canvas, svg {
+  max-width: 100%;
+}
+
+button, input, select, textarea {
+  font: inherit;
+  max-width: 100%;
+}
+
+button, .btn, .nav-item, .nav-link, .icon-btn {
+  touch-action: manipulation;
+}
+
+.page {
+  padding: clamp(14px, 2.5vw, 28px);
+  overflow-wrap: anywhere;
+}
+
+.topbar {
+  min-width: 0;
+  padding: 14px clamp(14px, 2.5vw, 32px);
+  flex-wrap: wrap;
+}
+
+.topbar-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.topbar-search {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.card, .stat-card, .stats-grid > *, .page > *,
+.modal-panel, .modal-content {
+  min-width: 0;
+}
+
+table {
+  width: 100%;
+  max-width: 100%;
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    width: min(290px, 86vw);
+    max-width: 86vw;
+    transform: translateX(-105%);
+    visibility: hidden;
+    transition: transform .25s ease, visibility .25s ease;
+    box-shadow: 12px 0 35px rgba(0,0,0,.25);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  body.tracemate-menu-open .sidebar {
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  body.tracemate-menu-open::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    background: rgba(7, 15, 25, .55);
+    backdrop-filter: blur(2px);
+  }
+
+  .main {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    min-width: 0;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 80;
+    gap: 10px;
+  }
+
+  .topbar-title {
+    font-size: clamp(18px, 4vw, 22px);
+  }
+
+  .topbar-search {
+    flex: 1 1 100%;
+    width: 100%;
+    order: 3;
+  }
+
+  .page {
+    width: 100%;
+    padding: 16px;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 12px;
+  }
+
+  .section-header,
+  .welcome-banner,
+  .welcome-actions {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .section-header > *,
+  .welcome-text,
+  .welcome-actions {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .form-grid,
+  .admin-compare-grid,
+  .claim-meta-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .table-wrap, .table-responsive, .admin-table-wrap {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-wrap table, .table-responsive table, .admin-table-wrap table {
+    min-width: 620px;
+  }
+
+  .modal, .modal-overlay, .dialog-overlay {
+    padding: 12px !important;
+    align-items: flex-start;
+    overflow-y: auto;
+  }
+
+  .modal-panel, .modal-content, .dialog, .modal-box {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+    margin: auto 0;
+  }
+
+  #ai-match-modal {
+    padding: 10px !important;
+    align-items: flex-start;
+    overflow-y: auto;
+  }
+
+  #ai-match-modal .ai-match-modal-panel {
+    width: 100% !important;
+    max-width: 760px;
+    max-height: calc(100dvh - 20px);
+    margin: auto;
+    overflow-y: auto;
+  }
+
+  #ai-match-modal .ai-match-modal-header {
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  #ai-match-modal .ai-match-modal-body {
+    padding: 16px !important;
+  }
+
+  #ai-match-modal .ai-match-card {
+    padding: 14px;
+    overflow-wrap: anywhere;
+  }
+
+  #ai-match-modal .ai-match-card-header {
+    gap: 12px;
+  }
+
+  #ai-match-modal .ai-match-ai-scores {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #ai-match-modal .ai-match-actions {
+    justify-content: stretch;
+  }
+
+  #ai-match-modal .ai-confirm-btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  input, select, textarea {
+    min-width: 0;
+  }
+
+  .btn, button {
+    min-height: 40px;
+  }
+}
+
+@media (max-width: 520px) {
+  .page {
+    padding: 12px;
+  }
+
+  .topbar {
+    padding: 12px;
+  }
+
+  .stats-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .auth-right {
+    width: 100%;
+    padding: 16px;
+  }
+
+  .auth-card {
+    padding: 28px 20px;
+    border-radius: 18px;
+  }
+
+  .auth-card h2 {
+    font-size: 23px;
+  }
+
+  .auth-help-row {
+    align-items: flex-start;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .section-header {
+    align-items: flex-start;
+  }
+
+  .action-btns {
+    flex-wrap: wrap;
+  }
+
+  .upload-zone {
+    padding: 22px 14px;
+  }
+
+  #ai-match-modal .ai-match-ai-scores {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #ai-match-modal .ai-match-score-area {
+    align-items: flex-start;
+  }
+
+  #ai-match-modal .ai-match-title {
+    font-size: 16px;
+    overflow-wrap: anywhere;
+  }
+
+  #ai-match-modal .ai-match-row span {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (min-width: 901px) {
+  .mobile-menu-toggle,
+  .mobile-menu-backdrop {
+    display: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* ==========================================================
+   MOBILE TABLE FIX — keep admin columns readable and swipeable
+   ========================================================== */
+.table-wrapper,
+.table-wrap,
+.table-responsive,
+.admin-table-wrap {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.table-wrapper > table,
+.table-wrap > table,
+.table-responsive > table,
+.admin-table-wrap > table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+}
+
+@media (max-width: 900px) {
+  .table-wrapper > table,
+  .table-wrap > table,
+  .table-responsive > table,
+  .admin-table-wrap > table {
+    min-width: 680px;
+    max-width: none;
+    table-layout: auto;
+  }
+
+  .table-wrapper th,
+  .table-wrapper td,
+  .table-wrap th,
+  .table-wrap td,
+  .table-responsive th,
+  .table-responsive td,
+  .admin-table-wrap th,
+  .admin-table-wrap td {
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: normal;
+    min-width: 72px;
+  }
+
+  .table-wrapper th,
+  .table-wrap th,
+  .table-responsive th,
+  .admin-table-wrap th {
+    font-size: 10px;
+    line-height: 1.35;
+    padding: 10px 9px;
+  }
+
+  .table-wrapper td,
+  .table-wrap td,
+  .table-responsive td,
+  .admin-table-wrap td {
+    padding: 10px 9px;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+}
+
+@media (max-width: 520px) {
+  .table-wrapper,
+  .table-wrap,
+  .table-responsive,
+  .admin-table-wrap {
+    margin-right: -2px;
+    border-radius: 10px;
+  }
+
+  .table-wrapper > table,
+  .table-wrap > table,
+  .table-responsive > table,
+  .admin-table-wrap > table {
+    min-width: 680px;
+  }
+}
+
+
+/* ==========================================================
+   TRACE MATE V17 — ADMIN TABLES ON NARROW VIEWPORTS
+   High-specificity overrides prevent legacy fixed-layout rules
+   from collapsing each column into a few characters.
+   ========================================================== */
+#app .table-wrapper {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+#app .table-wrapper > table {
+  width: max-content !important;
+  min-width: 100% !important;
+  max-width: none !important;
+  table-layout: auto !important;
+}
+@media (max-width: 900px) {
+  #app .table-wrapper > table {
+    min-width: 720px !important;
+  }
+  #app .table-wrapper > table th,
+  #app .table-wrapper > table td {
+    min-width: 84px !important;
+    max-width: 260px;
+    padding: 10px 12px !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+    vertical-align: top;
+    line-height: 1.4;
+  }
+  #app .table-wrapper > table th {
+    font-size: 11px !important;
+    letter-spacing: .02em;
+  }
+  #app .table-wrapper > table td {
+    font-size: 12px !important;
+  }
+}
+@media (max-width: 480px) {
+  #app .table-wrapper > table {
+    min-width: 720px !important;
+  }
+}
+
+/* Admin-confirmed match review: clear status and mobile-friendly comparison. */
+.confirmed-match-notice {
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--success, #2e9d65);
+  border-radius: 12px;
+  background: rgba(46, 157, 101, 0.08);
+  color: var(--text, inherit);
+}
+.confirmed-match-notice strong { display: block; margin-bottom: 4px; }
+.confirmed-match-notice p { margin: 0; line-height: 1.5; }
+.match-card-claim { min-width: 0; overflow-wrap: anywhere; }
+.match-card-claim .admin-compare-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.match-card-claim .compare-card { min-width: 0; overflow-wrap: anywhere; }
+.match-card-claim .compare-image { max-width: 100%; object-fit: contain; }
+.match-card-claim .claim-compare-actions .btn { min-height: 42px; }
+@media (max-width: 640px) {
+  .match-card-claim .admin-compare-grid { grid-template-columns: minmax(0, 1fr); }
+  .match-card-claim .claim-compare-actions { display: grid !important; grid-template-columns: minmax(0, 1fr); }
+  .match-card-claim .claim-compare-actions .btn { width: 100%; }
+  .confirmed-match-notice { padding: 12px; }
+}

@@ -1,22 +1,46 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from contextlib import asynccontextmanager
+from services.lostnet_classifier import classify_image
+
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from pydantic import BaseModel
 
 from services.cnn_service import (
     compare_images,
+    compare_image_text,
     image_to_embedding,
     get_visual_model_status,
+    start_visual_model_warmup,
 )
 
-from services.nlp_service import compare_texts
+from services.nlp_service import (
+    compare_texts,
+    get_nlp_status,
+    start_nlp_model_warmup,
+)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Kick off model downloads/initialization as soon as the AI service starts.
+    # Keep startup responsive; /health reports whether each model is loading,
+    # ready, or unavailable while the lightweight fallback remains usable.
+    print(
+        "[TraceMate AI] Starting automatic warm-up for SBERT, MobileNetV2, and CLIP.",
+        flush=True,
+    )
+    start_nlp_model_warmup()
+    start_visual_model_warmup()
+    yield
 
 
 app = FastAPI(
     title="TraceMate AI Service",
-    version="1.1.0",
+    version="1.2.0",
     description=(
         "TraceMate NLP and computer-vision service "
-        "with MobileNetV2 and CLIP."
+        "with automatic SBERT, MobileNetV2, and CLIP warm-up."
     ),
+    lifespan=lifespan,
 )
 
 
@@ -43,14 +67,19 @@ def health():
 
         "service": "TraceMate AI",
 
+        "version": "1.2.0",
+
         "status": "running",
 
         "features": [
             "NLP text similarity",
+            "SBERT semantic similarity with TF-IDF fallback",
             "MobileNetV2 image embeddings",
             "CLIP image embeddings",
             "Hybrid visual similarity",
         ],
+
+        "nlp": get_nlp_status(),
 
         "cnn": {
             "model": (
@@ -68,6 +97,9 @@ def health():
                     "available"
                 ]
             ),
+            "initialized": visual_status["mobilenet_v2"]["initialized"],
+            "loading": visual_status["mobilenet_v2"]["loading"],
+            "error": visual_status["mobilenet_v2"]["error"],
         },
 
         "clip": (
@@ -148,6 +180,7 @@ async def image_embedding(
         "image/jpg",
         "image/png",
         "image/webp",
+        "image/avif",
     }
 
     if image.content_type not in allowed:
@@ -191,6 +224,40 @@ async def image_embedding(
         )
 
 
+
+# ============================================================
+# CROSS-MODAL IMAGE + TEXT SIMILARITY
+# ============================================================
+
+@app.post("/cv/image-text-similarity")
+async def image_text_similarity(
+    image: UploadFile = File(...),
+    text: str = Form(...),
+):
+    """Compare a report description against an image using CLIP."""
+    allowed = {"image/jpeg", "image/jpg", "image/png", "image/webp",
+        "image/avif"}
+    if image.content_type not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail="Only JPG, PNG, and WEBP images are supported.",
+        )
+
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="Image is empty.")
+    if not text or not text.strip():
+        raise HTTPException(status_code=400, detail="Text is required.")
+
+    try:
+        return {"success": True, **compare_image_text(image_bytes, text)}
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Could not compare image and text: {exc}",
+        )
+
+
 # ============================================================
 # IMAGE SIMILARITY
 # ============================================================
@@ -206,6 +273,7 @@ async def image_similarity(
         "image/jpg",
         "image/png",
         "image/webp",
+        "image/avif",
     }
 
     for upload in (
@@ -276,7 +344,46 @@ def cv_health():
 
         "models": status,
     }
+# ============================================================
+# LOSTNET OBJECT CLASSIFICATION
+# ============================================================
 
+@app.post("/cv/classify")
+async def classify_lostnet_image(
+    image: UploadFile = File(...),
+):
+    allowed = {
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/webp",
+        "image/avif",
+    }
+
+    if image.content_type not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail="Only JPG, PNG, WEBP, and AVIF images are supported.",
+        )
+
+    image_bytes = await image.read()
+
+    if not image_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail="Image is empty.",
+        )
+
+    try:
+        return {
+            "success": True,
+            **classify_image(image_bytes),
+        }
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Could not classify image: {exc}",
+        )
 
 # ============================================================
 # START SERVER

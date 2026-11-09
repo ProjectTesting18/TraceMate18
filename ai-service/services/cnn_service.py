@@ -1,4 +1,4 @@
-﻿"""
+"""
 TraceMate image feature extraction.
 
 Visual pipeline:
@@ -6,7 +6,7 @@ Visual pipeline:
     MobileNetV2
         +
     CLIP
-        Ã¢â€ â€œ
+
     Hybrid visual information
 
 MobileNetV2 remains the primary/backward-compatible embedding exposed
@@ -26,7 +26,7 @@ Important:
 from __future__ import annotations
 
 from io import BytesIO
-from functools import lru_cache
+import threading
 
 import numpy as np
 from PIL import Image
@@ -35,49 +35,52 @@ from services.visual_details import extract_visual_details
 
 
 # ============================================================
+# MODEL STARTUP / SINGLE-INITIALIZATION STATE
+# ============================================================
+
+_MODEL_UNSET = object()
+_CNN_MODEL_CACHE = _MODEL_UNSET
+_CLIP_MODEL_CACHE = _MODEL_UNSET
+_CNN_MODEL_LOCK = threading.Lock()
+_CLIP_MODEL_LOCK = threading.Lock()
+_VISUAL_WARMUP_LOCK = threading.Lock()
+_VISUAL_WARMUP_STARTED = False
+_MOBILENET_LOADING = False
+_CLIP_LOADING = False
+_MOBILENET_STARTUP_ERROR = None
+_CLIP_STARTUP_ERROR = None
+
+
+# ============================================================
 # MOBILE NET V2
 # ============================================================
 
-@lru_cache(maxsize=1)
 def get_cnn_model():
-    """
-    Lazily load MobileNetV2.
+    """Load MobileNetV2 once, safely even if startup and a request race."""
+    global _CNN_MODEL_CACHE
+    if _CNN_MODEL_CACHE is not _MODEL_UNSET:
+        return _CNN_MODEL_CACHE
+    with _CNN_MODEL_LOCK:
+        if _CNN_MODEL_CACHE is not _MODEL_UNSET:
+            return _CNN_MODEL_CACHE
+        _CNN_MODEL_CACHE = _load_cnn_model()
+        return _CNN_MODEL_CACHE
 
-    This keeps FastAPI startup working even when PyTorch/torchvision
-    is unavailable.
-    """
 
+def _load_cnn_model():
+    """Construct MobileNetV2 or retain the deterministic fallback."""
     try:
         import torch
         import torch.nn as nn
-        from torchvision.models import (
-            mobilenet_v2,
-            MobileNet_V2_Weights,
-        )
+        from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
 
         weights = MobileNet_V2_Weights.DEFAULT
-
-        model = mobilenet_v2(
-            weights=weights
-        )
-
-        # Remove the classifier so we get the feature vector.
+        model = mobilenet_v2(weights=weights)
         model.classifier = nn.Identity()
-
         model.eval()
-
-        return (
-            model,
-            weights.transforms(),
-            "MobileNetV2",
-        )
-
+        return (model, weights.transforms(), "MobileNetV2")
     except Exception as exc:
-        return (
-            None,
-            exc,
-            "fallback",
-        )
+        return (None, exc, "fallback")
 
 
 def _cnn_embedding(
@@ -203,60 +206,72 @@ def _normalize(
 # CLIP
 # ============================================================
 
-@lru_cache(maxsize=1)
 def get_clip_model():
-    """
-    Lazily load pretrained CLIP.
+    """Load pretrained CLIP once, safely during startup and inference."""
+    global _CLIP_MODEL_CACHE
+    if _CLIP_MODEL_CACHE is not _MODEL_UNSET:
+        return _CLIP_MODEL_CACHE
+    with _CLIP_MODEL_LOCK:
+        if _CLIP_MODEL_CACHE is not _MODEL_UNSET:
+            return _CLIP_MODEL_CACHE
+        _CLIP_MODEL_CACHE = _load_clip_model()
+        return _CLIP_MODEL_CACHE
 
-    CLIP is kept independent from MobileNetV2 so that failure to load
-    CLIP does not stop the existing CNN pipeline.
 
-    The first successful use may download the pretrained model.
-    """
-
+def _load_clip_model():
+    """Construct CLIP; failure does not disable MobileNetV2."""
     try:
-
         import torch
-        from transformers import (
-            CLIPModel,
-            CLIPProcessor,
-        )
+        from transformers import CLIPModel, CLIPProcessor
 
-        model_name = (
-            "openai/clip-vit-base-patch32"
-        )
-
-        processor = (
-            CLIPProcessor.from_pretrained(
-                model_name
-            )
-        )
-
-        model = (
-            CLIPModel.from_pretrained(
-                model_name
-            )
-        )
-
+        model_name = "openai/clip-vit-base-patch32"
+        processor = CLIPProcessor.from_pretrained(model_name)
+        model = CLIPModel.from_pretrained(model_name)
         model.eval()
-
-        return (
-            model,
-            processor,
-            torch,
-            model_name,
-            None,
-        )
-
+        return (model, processor, torch, model_name, None)
     except Exception as exc:
+        return (None, None, None, "CLIP", exc)
 
-        return (
-            None,
-            None,
-            None,
-            "CLIP",
-            exc,
+
+def _visual_model_warmup_worker():
+    """Warm both visual models after service startup, without blocking health."""
+    global _MOBILENET_LOADING, _CLIP_LOADING
+    global _MOBILENET_STARTUP_ERROR, _CLIP_STARTUP_ERROR
+
+    _MOBILENET_LOADING = True
+    try:
+        model, transform_or_error, _ = get_cnn_model()
+        _MOBILENET_STARTUP_ERROR = (
+            str(transform_or_error) if model is None else None
         )
+    except Exception as exc:
+        _MOBILENET_STARTUP_ERROR = str(exc)
+    finally:
+        _MOBILENET_LOADING = False
+
+    _CLIP_LOADING = True
+    try:
+        model, _, _, _, error = get_clip_model()
+        _CLIP_STARTUP_ERROR = str(error) if model is None and error else None
+    except Exception as exc:
+        _CLIP_STARTUP_ERROR = str(exc)
+    finally:
+        _CLIP_LOADING = False
+
+
+def start_visual_model_warmup():
+    """Start MobileNetV2 and CLIP loading automatically, exactly once."""
+    global _VISUAL_WARMUP_STARTED
+    with _VISUAL_WARMUP_LOCK:
+        if _VISUAL_WARMUP_STARTED:
+            return
+        _VISUAL_WARMUP_STARTED = True
+        thread = threading.Thread(
+            target=_visual_model_warmup_worker,
+            name="tracemate-visual-model-warmup",
+            daemon=True,
+        )
+        thread.start()
 
 
 
@@ -277,12 +292,25 @@ VISUAL_LABEL_GROUPS = {
         "a mobile phone",
         "a laptop",
         "a tablet",
+        "a phone charger",
+        "a laptop charger",
+        "a power adapter",
+        "a wall adapter",
+        "a charging cable",
+        "a USB cable",
+        "an electrical cable",
+        "a power bank",
+        "a charging brick",
+        "a computer mouse",
+        "a keyboard",
+        "a camera",
         "a watch",
         "an umbrella",
         "a book",
         "a notebook",
         "headphones",
         "earphones",
+        "a headphone case",
         "glasses",
         "a key",
         "a cup",
@@ -298,18 +326,18 @@ VISUAL_LABEL_GROUPS = {
         "a very large object",
     ],
     "color": [
-        "a black object",
-        "a white object",
-        "a gray object",
-        "a silver object",
-        "a red object",
-        "a blue object",
-        "a green object",
-        "a yellow object",
-        "a orange object",
-        "a brown object",
-        "a pink object",
-        "a purple object",
+        "an object with a predominantly black main body",
+        "an object with a predominantly white main body",
+        "an object with a predominantly gray main body",
+        "an object with a predominantly silver main body",
+        "an object with a predominantly red main body",
+        "an object with a predominantly blue main body",
+        "an object with a predominantly green main body",
+        "an object with a predominantly yellow main body",
+        "an object with a predominantly orange main body",
+        "an object with a predominantly brown main body",
+        "an object with a predominantly pink main body",
+        "an object with a predominantly purple main body",
     ],
     "bottle_size": [
         "a small water bottle",
@@ -366,18 +394,18 @@ VISUAL_LABEL_CANONICAL = {
     "a small water bottle": "small",
     "a medium-sized water bottle": "medium",
     "a large water bottle": "large",
-    "a black object": "black",
-    "a white object": "white",
-    "a gray object": "gray",
-    "a silver object": "silver",
-    "a red object": "red",
-    "a blue object": "blue",
-    "a green object": "green",
-    "a yellow object": "yellow",
-    "a orange object": "orange",
-    "a brown object": "brown",
-    "a pink object": "pink",
-    "a purple object": "purple",
+    "an object with a predominantly black main body": "black",
+    "an object with a predominantly white main body": "white",
+    "an object with a predominantly gray main body": "gray",
+    "an object with a predominantly silver main body": "silver",
+    "an object with a predominantly red main body": "red",
+    "an object with a predominantly blue main body": "blue",
+    "an object with a predominantly green main body": "green",
+    "an object with a predominantly yellow main body": "yellow",
+    "an object with a predominantly orange main body": "orange",
+    "an object with a predominantly brown main body": "brown",
+    "an object with a predominantly pink main body": "pink",
+    "an object with a predominantly purple main body": "purple",
 }
 
 
@@ -1191,11 +1219,12 @@ def cosine_similarity(
 def similarity_percentage(
     cosine: float,
 ) -> float:
+    """Return non-negative cosine similarity as a 0..100 score.
 
-    return (
-        (cosine + 1.0)
-        / 2.0
-    ) * 100.0
+    Mapping cosine 0 to 50% falsely implied a moderate match for orthogonal
+    embeddings. This score is deliberately not described as a probability.
+    """
+    return float(np.clip(float(cosine), 0.0, 1.0) * 100.0)
 
 
 # ============================================================
@@ -1381,6 +1410,58 @@ def hybrid_visual_similarity(
 # ============================================================
 # IMAGE-TO-IMAGE COMPARISON
 # ============================================================
+
+
+def compare_image_text(
+    image_bytes: bytes,
+    text: str,
+) -> dict:
+    """Compare one uploaded image with a text description using CLIP.
+
+    This supports cross-modal matching when a lost report has text but
+    no image and a found report has an image but no description.
+    The percentage is a transformed cosine similarity, not a probability.
+    """
+    if not image_bytes:
+        raise ValueError("Image data is empty.")
+    text = str(text or "").strip()
+    if not text:
+        raise ValueError("Text description is empty.")
+
+    image = Image.open(BytesIO(image_bytes)).convert("RGB")
+    model, processor, torch, model_name, error = get_clip_model()
+    if model is None:
+        raise RuntimeError(f"CLIP is unavailable: {error}")
+
+    inputs = processor(
+        text=[text],
+        images=image,
+        return_tensors="pt",
+        padding=True,
+    )
+    with torch.inference_mode():
+        image_output = model.get_image_features(
+            pixel_values=inputs["pixel_values"]
+        )
+        text_output = model.get_text_features(
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs.get("attention_mask"),
+        )
+        image_features = _extract_clip_feature_tensor(image_output, torch)
+        text_features = _extract_clip_feature_tensor(text_output, torch)
+        image_features = image_features / image_features.norm(dim=-1, keepdim=True).clamp(min=1e-12)
+        text_features = text_features / text_features.norm(dim=-1, keepdim=True).clamp(min=1e-12)
+        cosine = float((image_features @ text_features.T).squeeze().item())
+
+    cosine = max(-1.0, min(1.0, cosine))
+    return {
+        "model": model_name,
+        "method": "CLIP image-text cosine similarity",
+        "cosine_similarity": round(cosine, 6),
+        "similarity_percentage": round(float(np.clip(cosine, 0.0, 1.0)) * 100.0, 2),
+        "is_probability": False,
+    }
+
 
 def compare_images(
     image1: bytes,
@@ -1640,65 +1721,63 @@ def compare_images(
 # ============================================================
 
 def get_visual_model_status() -> dict:
+    """Report loaded/loading/error state without triggering model downloads."""
+    cnn_initialized = _CNN_MODEL_CACHE is not _MODEL_UNSET
+    if cnn_initialized:
+        cnn_model, cnn_transform_or_error, _ = _CNN_MODEL_CACHE
+        mobilenet_available = cnn_model is not None
+        mobilenet_model = (
+            "MobileNetV2" if mobilenet_available else "ColorHistogramFallback"
+        )
+        mobilenet_error = (
+            str(cnn_transform_or_error) if not mobilenet_available else None
+        )
+    else:
+        mobilenet_available = False
+        mobilenet_model = (
+            "MobileNetV2 (loading)" if _MOBILENET_LOADING
+            else "MobileNetV2 (startup pending; not initialized)"
+        )
+        mobilenet_error = _MOBILENET_STARTUP_ERROR
 
-    # MobileNet status
-    cnn_model, _, cnn_name = (
-        get_cnn_model()
-    )
-
-    mobilenet_available = (
-        cnn_model is not None
-    )
-
-    # CLIP status
-    (
-        clip_model,
-        _,
-        _,
-        clip_name,
-        clip_error,
-    ) = get_clip_model()
-
-    clip_available = (
-        clip_model is not None
-    )
+    clip_initialized = _CLIP_MODEL_CACHE is not _MODEL_UNSET
+    if clip_initialized:
+        clip_model, _, _, clip_name, clip_error = _CLIP_MODEL_CACHE
+        clip_available = clip_model is not None
+        clip_model_name = clip_name if clip_available else "CLIP unavailable"
+        clip_error_text = str(clip_error) if clip_error else None
+    else:
+        clip_available = False
+        clip_model_name = (
+            "openai/clip-vit-base-patch32 (loading)" if _CLIP_LOADING
+            else "openai/clip-vit-base-patch32 (startup pending; not initialized)"
+        )
+        clip_error_text = _CLIP_STARTUP_ERROR
 
     return {
         "mobilenet_v2": {
             "available": mobilenet_available,
-            "model": (
-                "MobileNetV2"
-                if mobilenet_available
-                else "ColorHistogramFallback"
-            ),
+            "initialized": cnn_initialized,
+            "loading": _MOBILENET_LOADING,
+            "model": mobilenet_model,
+            "error": mobilenet_error,
         },
-
         "clip": {
             "available": clip_available,
-            "model": clip_name,
-            "error": (
-                str(clip_error)
-                if clip_error
-                else None
-            ),
+            "initialized": clip_initialized,
+            "loading": _CLIP_LOADING,
+            "model": clip_model_name,
+            "error": clip_error_text,
         },
-
         "hybrid": {
-            "available": (
-                mobilenet_available
-                or clip_available
-            ),
+            "available": mobilenet_available or clip_available,
+            "initialized": cnn_initialized or clip_initialized,
+            "loading": _MOBILENET_LOADING or _CLIP_LOADING,
             "models": [
                 model
                 for model, available in [
-                    (
-                        "MobileNetV2",
-                        mobilenet_available,
-                    ),
-                    (
-                        "CLIP",
-                        clip_available,
-                    ),
+                    ("MobileNetV2", mobilenet_available),
+                    ("CLIP", clip_available),
                 ]
                 if available
             ],

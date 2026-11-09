@@ -1,0 +1,18 @@
+TraceMate AI Match Modal Entity Repair v26
+
+Purpose: repairs HTML entity text that appears literally in the AI Match Candidates modal (examples: &#x53;ame category, charge&#x72;).
+
+Files changed:
+- index.html: cache-busted admin.js URL and loads js/ai-modal-entity-fix.js after admin.js.
+- js/ai-modal-entity-fix.js: independently observes the modal and safely decodes text nodes as text, not HTML.
+
+Replace the project folder with this complete project folder, then restart Node:
+1. Stop the running server with Ctrl+C in its terminal.
+2. Back up the current project folder.
+3. Extract this ZIP and use the included TraceMate-Full-Working-v26-Entity-Repair folder as the project folder.
+4. Run npm start from that folder.
+5. In Chrome, open DevTools > Network, enable Disable cache, and reload the page with Ctrl+Shift+R.
+
+Important: this repair is scoped to text nodes inside #ai-match-modal. It does not alter the database or AI matching scores. If literal entities remain, check that the served index.html loads js/ai-modal-entity-fix.js?v=20261030-entity-repair-v26 and run:
+  typeof window.repairTraceMateAIModalEntities
+  window.repairTraceMateAIModalEntities()

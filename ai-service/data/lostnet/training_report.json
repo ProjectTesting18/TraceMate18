@@ -1,0 +1,27 @@
+{
+  "created_at_utc": "2026-11-01T10:20:00.389469+00:00",
+  "dataset_zip": "test.zip",
+  "dataset_classes": [
+    "USBflashdisk",
+    "bag",
+    "book",
+    "card",
+    "earphone",
+    "key",
+    "lipstick",
+    "phone",
+    "umbrella",
+    "vacuumcup"
+  ],
+  "train_images": 3211,
+  "validation_images": 686,
+  "test_images": 697,
+  "epochs_requested": 1,
+  "best_validation_accuracy_percent": 97.23032069970846,
+  "held_out_test_loss": 0.07610783121488401,
+  "held_out_test_accuracy_percent": 98.56527977044476,
+  "base_checkpoint": "96.8cbam_finetuned_best.pth",
+  "best_checkpoint": "96.8cbam_dataset_trained_best.pth",
+  "final_checkpoint": "96.8cbam_dataset_trained.pth",
+  "note": "This is a 10-class lost-item object-category classifier, not a same-physical-item matching model. The held-out split is image-level and may not measure real-world lost/found matching accuracy."
+}

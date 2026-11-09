@@ -74,12 +74,12 @@ def _cosine_similarity(
 
 
 def _cosine_to_percentage(cosine: float) -> float:
-    """
-    Convert cosine similarity [-1, 1] into a bounded percentage [0, 100].
+    """Map non-negative cosine similarity to 0..100, not probability.
 
-    This is a similarity percentage, NOT model accuracy.
+    A cosine of 0 means orthogonal vectors and should not be displayed as a
+    50% match. Negative cosine values are treated as zero similarity.
     """
-    return float(np.clip(((cosine + 1.0) / 2.0) * 100.0, 0.0, 100.0))
+    return float(np.clip(float(cosine), 0.0, 1.0) * 100.0)
 
 
 # ============================================================

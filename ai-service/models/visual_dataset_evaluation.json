@@ -1,0 +1,47 @@
+{
+  "experiment": "random forest on precomputed visual pair features",
+  "dataset": "/mnt/data/tm_review/dataset-tools/matching-data/realistic_pair_features.csv",
+  "dataset_rows_used": 2073,
+  "train_rows": 1658,
+  "test_rows": 415,
+  "class_counts": {
+    "0": 1382,
+    "1": 691
+  },
+  "features": [
+    "mobilenet_cosine",
+    "category_match",
+    "color_similarity",
+    "brightness_similarity",
+    "aspect_ratio_similarity"
+  ],
+  "random_seed": 42,
+  "accuracy": 1.0,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "confusion_matrix_labels_0_1": [
+    [
+      277,
+      0
+    ],
+    [
+      0,
+      138
+    ]
+  ],
+  "roc_auc": 1.0,
+  "feature_importance": {
+    "mobilenet_cosine": 0.3247,
+    "category_match": 0.0371,
+    "color_similarity": 0.3347,
+    "brightness_similarity": 0.3033,
+    "aspect_ratio_similarity": 0.0002
+  },
+  "limitations": [
+    "Uses precomputed feature rows; it does not run CLIP, SBERT, or MobileNetV2 on raw images.",
+    "Bundled image paths refer to an external Windows path and raw images are not included here.",
+    "Random pair-level split may share image identities across splits; results are a functional baseline, not a publishable generalization estimate.",
+    "The dataset labels emphasize identical-image positives and synthetic/controlled negatives, not real-world lost/found identity labels."
+  ]
+}

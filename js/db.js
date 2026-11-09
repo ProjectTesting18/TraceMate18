@@ -219,21 +219,18 @@ function requestSync(
 const DB = {
 
   get(key) {
-    try {
-      const response = requestSync(
-        'GET',
-        apiUrl(`/api/db/${key}`)
-      );
+    // Never disguise a backend failure as an empty collection. Doing so can
+    // make a later DB.set() replace a real collection with only the new item.
+    const response = requestSync(
+      'GET',
+      apiUrl(`/api/db/${key}`)
+    );
 
-      return response?.data || [];
-    } catch (error) {
-      console.warn(
-        `DB.get(${key}) failed:`,
-        error
-      );
-
-      return [];
+    if (!response || !Array.isArray(response.data)) {
+      throw new Error(`TraceMate returned invalid data for ${key}. No changes were made.`);
     }
+
+    return response.data;
   },
 
   set(key, data) {
@@ -254,6 +251,14 @@ const DB = {
 
       throw error;
     }
+  },
+
+  removeItem(key, id) {
+    if (!['lost_items', 'found_items'].includes(key)) {
+      throw new Error('Only lost/found reports can be deleted this way');
+    }
+    if (!id) throw new Error('Report id is required');
+    return requestSync('DELETE', apiUrl(`/api/db/${key}/${encodeURIComponent(id)}`), null, true);
   },
 
   getObj(key) {

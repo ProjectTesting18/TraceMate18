@@ -1,10 +1,47 @@
 node_modules/
 .venv/
+**/.venv/
 .env
-.env.*
-!.env.example
-npm-debug.log*
+**/__pycache__/
+*.py[cod]
+data/db.json
+data/*.json
+.DS_Store
+
+# Python environments
+.training-venv/
+**/.training-venv/
+venv/
+**/venv/
+
+# Python cache
 __pycache__/
+**/__pycache__/
 *.pyc
 
-TraceMate-Merged-Original-CNN/
+# Large datasets and temporary archives
+**/test.zip
+**/*.tmp
+
+# Local databases and secrets
+.env.*
+!.env.example
+
+# Model training temporary files
+**/lostnet_extracted/
+
+# All Python virtual environments
+.venv/
+**/.venv/
+venv/
+**/venv/
+.training-venv/
+**/.training-venv/
+
+# Large temporary dataset archive
+**/test.zip
+
+# Python cache
+__pycache__/
+**/__pycache__/
+*.pyc
