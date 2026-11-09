@@ -12,7 +12,7 @@ The browser talks only to the Node website. Node calls the Python service over R
 
 The Python service automatically warms up SBERT, MobileNetV2, CLIP, and the trained LostNet classifier. The LostNet checkpoint is part of the repository under `ai-service/data/lostnet/`. The AI service uses CPU-only PyTorch wheels; no GPU is assumed.
 
-This Blueprint uses paid Render services and persistent disks. Render's free services cannot provide this private-service + persistent-disk production architecture. The Python service is configured with 2 CPU / 4 GB RAM as an initial minimum, not a performance guarantee. If simultaneous model loading or traffic exceeds memory/CPU, increase the plan after observing actual usage.
+This Blueprint uses paid Render services and persistent disks. Render's free services cannot provide this private-service + persistent-disk production architecture. The Python service is configured with 2 CPU / 8 GB RAM as the configured starting plan, not a performance guarantee. If simultaneous model loading or traffic exceeds memory/CPU, increase the plan after observing actual usage.
 
 ## Before deploying
 
