@@ -10,26 +10,32 @@ const DEFAULT_AI_SERVICE_URLS = [
 let cachedUrl = null;
 let resolving = null;
 
+function normalizeBaseUrl(value) {
+  const raw = String(value || '').trim().replace(/\\/+$/, '');
+  if (!raw) return '';
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `http://${raw}`;
+}
+
 /**
- * Resolve the running TraceMate AI service instead of blindly trusting a stale
- * AI_SERVICE_URL (for example, an .env value pointing at unused port 8000).
- * The URL is cached only after /health succeeds.
+ * Resolve the configured AI service only after its health endpoint responds.
+ * Production never falls back to localhost: the Node service and Python AI
+ * service run in separate Render instances.
  */
 async function resolveAIServiceUrl() {
   if (cachedUrl) return cachedUrl;
   if (resolving) return resolving;
 
   resolving = (async () => {
-    const configured = String(process.env.AI_SERVICE_URL || '').trim()
-      .replace(/\/+$/, '');
+    const configured = normalizeBaseUrl(process.env.AI_SERVICE_URL);
+    const isProduction = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
     const candidates = [...new Set([
       ...(configured ? [configured] : []),
-      ...DEFAULT_AI_SERVICE_URLS
+      ...(!isProduction ? DEFAULT_AI_SERVICE_URLS : [])
     ])];
 
     for (const baseUrl of candidates) {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 2500);
+      const timer = setTimeout(() => controller.abort(), 5000);
       try {
         const response = await fetch(`${baseUrl}/health`, {
           method: 'GET',
@@ -40,13 +46,16 @@ async function resolveAIServiceUrl() {
           return cachedUrl;
         }
       } catch {
-        // Try the next configured/default local endpoint.
+        // Keep trying local development candidates; production has one target.
       } finally {
         clearTimeout(timer);
       }
     }
 
-    // Do not cache failure; a later request can succeed after Python starts.
+    if (isProduction) {
+      throw new Error('Configured TraceMate AI service is unavailable. Check AI_SERVICE_URL and the Python service deployment.');
+    }
+
     return configured || 'http://127.0.0.1:8001';
   })();
 
