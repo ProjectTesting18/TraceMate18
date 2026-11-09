@@ -5,7 +5,7 @@ services:
   - type: web
     name: tracemate-web
     runtime: node
-    plan: starter
+    plan: 1c-2g
     region: singapore
     buildCommand: npm install
     startCommand: npm start
@@ -43,8 +43,6 @@ services:
       mountPath: /var/data
       sizeGB: 20
     envVars:
-      - key: PORT
-        value: "10000"
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: HF_HOME
