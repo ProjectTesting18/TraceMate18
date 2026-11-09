@@ -5,15 +5,15 @@ services:
   - type: web
     name: tracemate-web
     runtime: node
-    plan: 0.5c-512mb
-    region: oregon
+    plan: starter
+    region: singapore
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health
     disk:
       name: tracemate-app-data
       mountPath: /var/data
-      sizeGB: 1
+      sizeGB: 10
     envVars:
       - key: NODE_ENV
         value: production
@@ -32,17 +32,20 @@ services:
   - type: pserv
     name: tracemate-ai
     runtime: python
-    plan: 2c-4g
+    plan: 2c-8g
     region: oregon
     rootDir: ai-service
     buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     healthCheckPath: /health
     disk:
       name: tracemate-ai-model-cache
       mountPath: /var/data
       sizeGB: 20
     envVars:
+      - key: PORT
+        value: "10000"
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: HF_HOME
